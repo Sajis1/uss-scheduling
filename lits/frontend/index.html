@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>USS LITS Student Worker Schedule</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="app-header-title">
+      <p class="kicker">UHD USS LITS</p>
+      <h1>Student Worker Schedule</h1>
+    </div>
+    <div id="current-student" class="current-student" hidden>
+      Signed in as <strong id="current-student-name"></strong>
+      <button id="switch-student-btn" type="button" class="link-btn">Not you?</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Step 1: pick your name. No login system in Phase 1. -->
+    <section id="picker-section" class="card">
+      <h2>Who are you?</h2>
+      <p class="hint">Pick your name from the list below. Only active student workers appear here.</p>
+      <label for="student-select">Student name</label>
+      <select id="student-select">
+        <option value="">Loading students...</option>
+      </select>
+      <button id="continue-btn" type="button" disabled>Continue</button>
+      <p id="picker-error" class="error" hidden></p>
+    </section>
+
+    <!-- Step 2: portal, hidden until a student is picked -->
+    <section id="portal-section" hidden>
+      <nav class="tabs">
+        <button class="tab-btn active" data-tab="class-schedule">Unavailable Schedule</button>
+        <button class="tab-btn" data-tab="time-off">Time Off</button>
+      </nav>
+
+      <section id="tab-class-schedule" class="tab-panel card">
+        <h2 id="class-schedule-form-title">My Unavailable Schedule</h2>
+        <p class="hint">Add every time block you're unavailable to work (classes, etc). Managers only see the day and time - course/notes is optional, so you never have to share what the class actually is.</p>
+
+        <button type="button" id="tutorial-btn" class="tutorial-btn" hidden>
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2.5v11a1 1 0 0 0 1.5.87l9-5.5a1 1 0 0 0 0-1.74l-9-5.5A1 1 0 0 0 4 2.5Z"/></svg>
+          Watch tutorial
+        </button>
+
+        <form id="class-schedule-form">
+          <input type="hidden" id="cs-rowid" />
+
+          <div class="field-grid">
+            <div class="field">
+              <label for="cs-day">Day</label>
+              <select id="cs-day" required>
+                <option value="">Select a day</option>
+                <option>Monday</option>
+                <option>Tuesday</option>
+                <option>Wednesday</option>
+                <option>Thursday</option>
+                <option>Friday</option>
+                <option>Saturday</option>
+                <option>Sunday</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="cs-start">Start time</label>
+              <input id="cs-start" type="time" step="900" required />
+            </div>
+            <div class="field">
+              <label for="cs-end">End time</label>
+              <input id="cs-end" type="time" step="900" required />
+            </div>
+          </div>
+
+          <div class="field-grid">
+            <div class="field">
+              <label for="cs-semester">Semester</label>
+              <select id="cs-semester" required></select>
+            </div>
+            <div class="field">
+              <label for="cs-grad">Expected graduation (optional)</label>
+              <input id="cs-grad" type="text" placeholder="e.g. Spring 2027, or Temp" />
+            </div>
+          </div>
+
+          <button type="submit" id="cs-submit-btn">Submit</button>
+          <button type="button" id="cs-cancel-btn" hidden>Cancel</button>
+        </form>
+        <p id="class-schedule-status" class="status" hidden></p>
+
+        <h3>Current schedule</h3>
+        <table id="class-schedule-table">
+          <thead>
+            <tr><th>Day</th><th>Start</th><th>End</th><th>Semester</th><th>Expected Grad</th><th>Actions</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </section>
+
+      <section id="tab-time-off" class="tab-panel card" hidden>
+        <h2>Time Off Requests</h2>
+        <form id="time-off-form">
+          <div class="field-grid">
+            <div class="field">
+              <label for="to-start">Start date</label>
+              <input id="to-start" type="date" required />
+            </div>
+            <div class="field">
+              <label for="to-end">End date</label>
+              <input id="to-end" type="date" required />
+            </div>
+          </div>
+
+          <label for="to-reason">Reason (optional)</label>
+          <input id="to-reason" type="text" />
+
+          <button type="submit">Submit</button>
+        </form>
+        <p id="time-off-status" class="status" hidden></p>
+
+        <h3>My requests</h3>
+        <table id="time-off-table">
+          <thead>
+            <tr><th>Start</th><th>End</th><th>Reason</th><th>Status</th><th>Submitted</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </section>
+    </section>
+  </main>
+
+  <script src="js/api.js"></script>
+  <script src="js/modal.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

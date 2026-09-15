@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>USS LITS Work Schedule - Manager Dashboard</title>
+  <link rel="stylesheet" href="css/styles.css" />
+  <link rel="stylesheet" href="css/manager.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="app-header-title">
+      <p class="kicker">UHD USS LITS</p>
+      <h1>Student Worker Schedule <span class="header-subtitle">Manager Dashboard</span></h1>
+    </div>
+    <button type="button" id="tutorial-btn" class="tutorial-btn tutorial-btn-on-brand" hidden>
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2.5v11a1 1 0 0 0 1.5.87l9-5.5a1 1 0 0 0 0-1.74l-9-5.5A1 1 0 0 0 4 2.5Z"/></svg>
+      Watch tutorial
+    </button>
+  </header>
+
+  <main class="manager-main">
+    <!-- No login here either, same accepted Phase 1 tradeoff as the student portal. -->
+
+    <section class="card">
+      <h2>Generate Schedule</h2>
+      <p class="hint">
+        Fills NW from NW students only (never backed up by OMB/CSB), then OMB, then CSB
+        &mdash; OMB and CSB flex into each other when one desk's own students can't cover
+        a gap. Split shifts are allowed, so a student can appear more than once in a day.
+        Manual overrides below are never touched by Generate, unless "Also overwrite
+        manual edits" is checked.
+      </p>
+      <div class="field-grid">
+        <div class="field">
+          <label for="semester-input">Semester</label>
+          <input id="semester-input" type="text" placeholder="e.g. Fall 2026" value="Fall 2026" />
+        </div>
+        <div class="field">
+          <label for="asof-input">As of date</label>
+          <input id="asof-input" type="date" />
+        </div>
+      </div>
+      <p class="hint">
+        A student with approved time off covering this date is left out of the generated
+        pattern entirely. Re-run Generate once their time off ends.
+      </p>
+
+      <label class="checkbox-label">
+        <input id="override-manual-checkbox" type="checkbox" />
+        Also overwrite manual edits (deletes every manual shift for this semester and
+        rebuilds the whole schedule from scratch)
+      </label>
+
+      <button id="generate-btn" type="button">Generate Schedule</button>
+      <p id="generate-status" class="status" hidden></p>
+      <button id="show-gaps-btn" type="button" hidden>View Uncovered Gaps</button>
+      <div id="gaps-panel" hidden>
+        <h3>Uncovered gaps</h3>
+        <ul id="gaps-list"></ul>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Weekly Schedule</h2>
+      <p class="hint">
+        <span class="chip-legend chip-legend-generated">Generated</span>
+        <span class="chip-legend chip-legend-manual">Manual override</span>
+        &mdash; a red-flagged cell has more people assigned than that desk can physically hold at once.
+      </p>
+      <label for="calendar-semester-input">Viewing semester</label>
+      <input id="calendar-semester-input" type="text" value="Fall 2026" />
+      <button id="refresh-calendar-btn" type="button">Refresh</button>
+      <button id="copy-excel-btn" type="button" class="btn-copy-excel">
+        <span class="btn-copy-excel-icon" aria-hidden="true"></span>Copy for Excel
+      </button>
+      <p class="hint">
+        Copies the schedule as a formatted grid &mdash; paste with Ctrl+V into a blank Excel
+        sheet. Works in a regular browser tab and inside an embedded Teams tab alike.
+      </p>
+      <p id="export-copy-status" class="status" hidden></p>
+
+      <div class="table-scroll">
+      <table id="calendar-table">
+        <thead>
+          <tr>
+            <th>Location</th>
+            <th>Monday</th>
+            <th>Tuesday</th>
+            <th>Wednesday</th>
+            <th>Thursday</th>
+            <th>Friday</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr data-location="OMB">
+            <td>OMB<br><span class="hint">(One Main)</span></td>
+            <td data-day="Monday"></td><td data-day="Tuesday"></td><td data-day="Wednesday"></td>
+            <td data-day="Thursday"></td><td data-day="Friday"></td>
+          </tr>
+          <tr data-location="NW">
+            <td>NW<br><span class="hint">(locked, no flex)</span></td>
+            <td data-day="Monday"></td><td data-day="Tuesday"></td><td data-day="Wednesday"></td>
+            <td data-day="Thursday"></td><td data-day="Friday"></td>
+          </tr>
+          <tr data-location="CSB">
+            <td>CSB<br><span class="hint">(Commerce, overflow)</span></td>
+            <td data-day="Monday"></td><td data-day="Tuesday"></td><td data-day="Wednesday"></td>
+            <td data-day="Thursday"></td><td data-day="Friday"></td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Unavailable Schedule</h2>
+      <p class="hint">
+        Read-only reference showing every active student's unavailable times, straight from
+        Unavailable Schedule &mdash; use this alongside the Weekly Schedule above to see why a
+        shift starts/ends where it does. Not editable here; students manage their own from the
+        student portal.
+      </p>
+      <button id="refresh-class-schedule-btn" type="button">Refresh</button>
+
+      <table id="class-schedule-table">
+        <thead>
+          <tr>
+            <th>Student</th>
+            <th>Monday</th>
+            <th>Tuesday</th>
+            <th>Wednesday</th>
+            <th>Thursday</th>
+            <th>Friday</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section class="card" id="shift-form-panel">
+      <h2 id="shift-form-title">Add Shift (Manual)</h2>
+      <form id="shift-form">
+        <input type="hidden" id="shift-rowid" />
+
+        <label for="shift-student">Student</label>
+        <select id="shift-student" required></select>
+
+        <div class="field-grid">
+          <div class="field">
+            <label for="shift-day">Day</label>
+            <select id="shift-day" required>
+              <option>Monday</option><option>Tuesday</option><option>Wednesday</option>
+              <option>Thursday</option><option>Friday</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="shift-location">Location</label>
+            <select id="shift-location" required>
+              <option>OMB</option><option>NW</option><option>CSB</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field-grid">
+          <div class="field">
+            <label for="shift-start">Start time</label>
+            <input id="shift-start" type="time" step="900" required />
+          </div>
+          <div class="field">
+            <label for="shift-end">End time</label>
+            <input id="shift-end" type="time" step="900" required />
+          </div>
+        </div>
+
+        <div class="field-grid">
+          <div class="field">
+            <label for="shift-semester">Semester</label>
+            <select id="shift-semester" required></select>
+          </div>
+          <div class="field">
+            <label for="shift-notes">Notes (optional)</label>
+            <input id="shift-notes" type="text" />
+          </div>
+        </div>
+
+        <button type="submit" id="shift-submit-btn">Add shift</button>
+        <button type="button" id="shift-cancel-btn" hidden>Cancel edit</button>
+      </form>
+      <p id="shift-form-status" class="status" hidden></p>
+    </section>
+
+    <section class="card">
+      <h2>Time Off Requests</h2>
+      <p class="hint">Every request, not just pending ones - Approve/Deny only shows for requests still awaiting a decision.</p>
+      <table id="time-off-table">
+        <thead>
+          <tr><th>Student</th><th>Start</th><th>End</th><th>Reason</th><th>Submitted</th><th>Status</th><th>Actions</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <p id="time-off-empty" class="hint" hidden>No time off requests yet.</p>
+    </section>
+
+    <section class="card">
+      <h2>Weekly Hours</h2>
+      <p class="hint">Total scheduled hours per student for the semester currently shown above, against each student's own weekly cap (19/week by default, or their Max Hours override from Student Master).</p>
+      <table id="weekly-hours-table">
+        <thead>
+          <tr><th>Student</th><th>Hours</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <p id="weekly-hours-empty" class="hint" hidden>No hours scheduled yet.</p>
+    </section>
+  </main>
+
+  <script src="js/api.js"></script>
+  <script src="js/modal.js"></script>
+  <script src="js/manager.js"></script>
+</body>
+</html>
