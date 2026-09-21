@@ -1,7 +1,101 @@
+:root {
+  /* One consistent spacing scale (8px base), used everywhere below instead
+     of ad hoc rem values - this is what keeps vertical rhythm even across
+     the page rather than tight in some spots and loose in others. */
+  --space-1: 0.5rem;
+  --space-2: 0.75rem;
+  --space-3: 1rem;
+  --space-4: 1.5rem;
+  --space-5: 2rem;
+  --space-6: 3rem;
+
+  /* Per-desk identifiers - a quiet color cue (a small dot, a thin left
+     border), never a filled background. Chosen to stay distinct from the
+     brand's teal-blue and from the Manual-override amber, which still
+     takes visual priority on a manual chip's border (declared later in the
+     cascade, see .chip-manual). CSB was teal before the brand itself became
+     teal-blue - moved to rose so the two don't collide. */
+  --desk-omb: #2563eb;
+  --desk-nw: #7c3aed;
+  --desk-csb: #be185d;
+}
+
+/* Single centered column - boxed cards are back (a boxless version read as
+   crowded with no separation between sections), the glass treatment itself
+   lives on the shared .card class in styles.css so both pages get it. */
 .manager-main {
-  max-width: 1080px;
-  margin: 2.25rem auto;
-  padding: 0 1.25rem;
+  max-width: 1000px;
+  margin: var(--space-4) auto;
+  padding: 0 var(--space-4) var(--space-5);
+}
+
+/* Overview strip gets the same glass-card treatment as .card (duplicated
+   rather than sharing the class, since it needs flex layout instead of
+   .card's block padding). */
+.overview-strip {
+  display: flex;
+  flex-wrap: wrap;
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 14px;
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+  box-shadow: 0 8px 30px rgba(15, 23, 42, 0.07);
+}
+
+.overview-item {
+  flex: 1 1 180px;
+  padding: 0 var(--space-4);
+  border-left: 1px solid var(--border);
+}
+
+.overview-item:first-child {
+  padding-left: 0;
+  border-left: none;
+}
+
+.overview-item:last-child {
+  padding-right: 0;
+}
+
+.overview-item-value {
+  font-family: var(--font-heading);
+  font-size: 1.9rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.overview-item-label {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-top: var(--space-2);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.overview-item-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.overview-item-students .overview-item-dot { background: var(--brand); }
+.overview-item-gaps .overview-item-dot { background: var(--danger); }
+.overview-item-timeoff .overview-item-dot { background: #d98c00; }
+
+.overview-item-sublabel {
+  margin-top: 0.15rem;
+  font-size: 0.74rem;
+  color: var(--text-muted);
 }
 
 .checkbox-label {
@@ -13,7 +107,7 @@
   text-transform: none;
   letter-spacing: normal;
   color: var(--text);
-  margin-top: 0.9rem;
+  margin-top: var(--space-3);
   cursor: pointer;
 }
 
@@ -56,6 +150,41 @@
   overflow-wrap: break-word;
 }
 
+/* Desk color-coding carried onto the calendar's own row labels too, matching
+   the chips inside that row - a thin colored left bar, not a filled block. */
+#calendar-table tr[data-location="OMB"] td:first-child { border-left: 3px solid var(--desk-omb); }
+#calendar-table tr[data-location="NW"] td:first-child { border-left: 3px solid var(--desk-nw); }
+#calendar-table tr[data-location="CSB"] td:first-child { border-left: 3px solid var(--desk-csb); }
+
+/* Small color-key legend, paired with the existing Generated/Manual legend
+   above the calendar. */
+.desk-key {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.desk-key-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.desk-key-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.desk-key-dot-omb { background: var(--desk-omb); }
+.desk-key-dot-nw { background: var(--desk-nw); }
+.desk-key-dot-csb { background: var(--desk-csb); }
+
 #calendar-table td:first-child .hint {
   font-size: 0.74rem;
 }
@@ -79,7 +208,7 @@
   left: 0;
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, var(--brand) 0%, #1f3864 100%);
+  background: var(--brand);
   transition: width 0.4s ease;
 }
 
@@ -108,22 +237,21 @@
   padding-bottom: 0.35rem;
 }
 
+/* Chips: a hairline border carries the desk/manual signal, not a filled
+   tint - keeps a day's cell calm even when it has several shifts stacked. */
 .chip {
   display: block;
-  background: #f4f6fa;
-  border-left: 4px solid #94a3b8;
+  background: #f8f9fb;
+  border-left: 3px solid #94a3b8;
   border-radius: 4px;
   padding: 0.4rem 0.55rem;
   margin-bottom: 0.4rem;
   font-size: 0.82rem;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-  transition: box-shadow 0.15s ease, transform 0.15s ease;
 }
 
-.chip:hover {
-  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.1);
-  transform: translateY(-1px);
-}
+.chip-loc-omb { border-left-color: var(--desk-omb); }
+.chip-loc-nw { border-left-color: var(--desk-nw); }
+.chip-loc-csb { border-left-color: var(--desk-csb); }
 
 .chip-manual {
   border-left-color: #d98c00;
@@ -195,12 +323,12 @@
 
 .chip-legend-generated {
   background: #f4f6fa;
-  border-left: 4px solid #94a3b8;
+  border-left: 3px solid #94a3b8;
 }
 
 .chip-legend-manual {
   background: #fff8ea;
-  border-left: 4px solid #d98c00;
+  border-left: 3px solid #d98c00;
 }
 
 .cell-conflict {
@@ -219,7 +347,7 @@
 }
 
 #refresh-class-schedule-btn {
-  margin-top: 0.75rem;
+  margin-top: var(--space-2);
   padding: 0.55rem 1.25rem;
   border-radius: 6px;
   cursor: pointer;
@@ -237,8 +365,8 @@
 }
 
 #gaps-panel {
-  margin-top: 0.75rem;
-  padding: 0.75rem 1rem;
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
   background: var(--danger-light);
   border-left: 3px solid var(--danger);
   border-radius: 6px;
@@ -267,31 +395,42 @@
   margin-right: 0.5rem;
 }
 
+/* Primary actions: teal gradient fill with a soft glow, matching the glass
+   cards' more polished feel instead of a flat block of color. */
 #refresh-calendar-btn,
 #generate-btn,
 #show-gaps-btn,
+#sync-roster-btn,
 #shift-cancel-btn {
-  margin-top: 0.75rem;
-  padding: 0.55rem 1.25rem;
-  border-radius: 8px;
+  margin-top: var(--space-2);
+  padding: 0.6rem 1.35rem;
+  border-radius: 6px;
   cursor: pointer;
   font-size: 0.9rem;
   font-weight: 600;
-  transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
 }
 
 #generate-btn,
-#show-gaps-btn {
-  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-dark) 100%);
+#show-gaps-btn,
+#sync-roster-btn {
+  background: linear-gradient(135deg, #14a5c9 0%, var(--brand) 55%, var(--brand-dark) 100%);
   color: white;
   border: none;
-  box-shadow: 0 2px 8px rgba(20, 38, 71, 0.3);
+  box-shadow: 0 3px 12px rgba(14, 116, 144, 0.35);
 }
 
 #generate-btn:hover,
-#show-gaps-btn:hover {
+#show-gaps-btn:hover,
+#sync-roster-btn:hover {
+  box-shadow: 0 5px 18px rgba(14, 116, 144, 0.45);
   transform: translateY(-1px);
-  box-shadow: 0 4px 14px rgba(20, 38, 71, 0.4);
+}
+
+#sync-roster-btn:disabled,
+#generate-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 #refresh-calendar-btn,
@@ -305,14 +444,13 @@
 #shift-cancel-btn:hover {
   border-color: var(--brand);
   color: var(--brand);
-  transform: translateY(-1px);
 }
 
-/* Copy for Excel - styled distinctly (navy, matching the exported sheet's
-   own header color) so it reads as the dashboard's signature action, not
-   just another toolbar button. */
+/* Copy for Excel - kept as a distinct pill (its one earned flourish, since
+   it's the dashboard's signature hand-off action) but with a quiet hover
+   instead of a lift-and-glow. */
 .btn-copy-excel {
-  margin-top: 0.75rem;
+  margin-top: var(--space-2);
   margin-left: 0.5rem;
   padding: 0.6rem 1.4rem;
   border-radius: 999px;
@@ -321,24 +459,18 @@
   font-weight: 700;
   letter-spacing: 0.02em;
   color: white;
-  background: linear-gradient(135deg, #2b4c8c 0%, #1f3864 100%);
+  background: linear-gradient(135deg, #14a5c9 0%, var(--brand-dark) 100%);
   border: none;
-  box-shadow: 0 3px 10px rgba(31, 56, 100, 0.35);
+  box-shadow: 0 3px 12px rgba(14, 116, 144, 0.35);
   display: inline-flex;
   align-items: center;
   gap: 0.55rem;
-  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
 }
 
 .btn-copy-excel:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(31, 56, 100, 0.45);
-  background: linear-gradient(135deg, #345a9e 0%, #24406f 100%);
-}
-
-.btn-copy-excel:active {
-  transform: translateY(0);
-  box-shadow: 0 2px 6px rgba(31, 56, 100, 0.35);
+  box-shadow: 0 5px 18px rgba(14, 116, 144, 0.45);
+  transform: translateY(-1px);
 }
 
 /* Small "two overlapping sheets" copy icon, drawn in pure CSS so no icon

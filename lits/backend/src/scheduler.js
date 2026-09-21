@@ -10,6 +10,15 @@
 // adapting is less risky than a premature shared abstraction. See
 // ASSUMPTIONS TO CONFIRM below for anything not yet nailed down with USS LITS.
 //
+// Role model (finalized against the real Smartsheet, 2026-09-15 - supersedes
+// an earlier three-way OMB/NW/CSB draft): Student Master's Role is
+// formula-derived from Supervisor and only ever takes ONE of two values -
+// 'OMB/CSB' (Supervisor: Amanda Jones) or 'NW' (Supervisor: Ivan Saldivia).
+// There is no Primary Location column and no per-student "home desk"
+// preference between OMB and CSB - any 'OMB/CSB' student is equally eligible
+// for either desk. NW is still proprietary: an 'NW' student can only ever be
+// assigned to the NW desk, never OMB/CSB, and vice versa.
+//
 // ASSUMPTIONS TO CONFIRM (flagged in the LITS coverage-policy doc too):
 //   - Each of NW / OMB / CSB needs exactly ONE person at a time (no stated
 //     simultaneous headcount >1, unlike PMO's S700 2-seat).
@@ -32,11 +41,11 @@ const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
 // The three desks. NW is proprietary - it draws from its own students only,
 // with no fallback pool at all (an NW gap that NW students can't cover stays
-// a reported gap, never filled by an OMB/CSB student). OMB and CSB are a
-// two-way floater pair - each has its own home pool, filled first across the
-// whole week, and each falls back to the OTHER desk's pool for whatever gap
-// its own home students can't close. OMB is filled before CSB per the
-// "OMB - 1st priority, CSB - 2nd priority" fill order.
+// a reported gap, never filled by an OMB/CSB student). OMB and CSB are both
+// filled from the SAME combined OMB/CSB pool - there's no home-desk split
+// within that pool, so any OMB/CSB student is equally eligible for either.
+// OMB is filled before CSB per the "OMB - 1st priority, CSB - 2nd priority"
+// fill order, using only whatever capacity OMB's pass didn't already claim.
 const LOCATIONS = { NW: 'NW', OMB: 'OMB', CSB: 'CSB' };
 
 // A shift spanning the full 8am-5pm office day includes a mandatory unpaid
@@ -79,6 +88,28 @@ function resolveMaxWeeklyMinutes(maxHours) {
   const hours = Number(maxHours);
   if (!Number.isFinite(hours) || hours <= 0) return WEEKLY_CAP_MINUTES;
   return Math.floor((hours * 60) / 15) * 15;
+}
+
+const FULL_DAY_WORKED_MINUTES = OFFICE_END - OFFICE_START - (LUNCH_END - LUNCH_START); // 480 - a full 8-5 day, lunch already deducted
+
+// A student's weekly cap doesn't divide evenly into full 8-5 days in the
+// general case: 19 hours (1140 min) / 480-min days = 2.375, so two full
+// days leaves exactly 180 minutes - under the 4-hour minimum, and
+// therefore unusable forever. Confirmed live against the real roster
+// (2026-09-21): every student capped out at 16h, 3h short of their real
+// 19h budget, for exactly this reason. Fix: precompute a single target
+// shift length per student that divides their cap evenly (or as close to
+// it as a 15-minute-aligned length allows), so fillSeatFromPool spreads
+// them across several shorter shifts instead of greedily grabbing full
+// days until the leftover is stranded. If the cap already divides evenly
+// into full days (e.g. 16h = exactly 2 days), keep using full days - no
+// need to fragment a schedule that already works cleanly.
+function resolveTargetShiftMinutes(weeklyCapMinutes) {
+  if (weeklyCapMinutes % FULL_DAY_WORKED_MINUTES === 0) {
+    return FULL_DAY_WORKED_MINUTES;
+  }
+  const shiftsThatFit = Math.max(1, Math.floor(weeklyCapMinutes / MIN_SHIFT_MINUTES));
+  return Math.max(MIN_SHIFT_MINUTES, Math.floor(weeklyCapMinutes / shiftsThatFit / 15) * 15);
 }
 
 function parseTimeToMinutes(text) {
@@ -214,30 +245,38 @@ function candidateScore(overlapMinutes, daysWorkedSoFar, closesGapFully) {
   return closureBonus - daysWorkedSoFar * 100000 + overlapMinutes;
 }
 
-// Students whose home desk is this location - the "stay home" tier tried
-// before flexing anyone in from the other desk.
-function homePool(pool, location) {
-  return pool.filter((s) => s.primaryLocation === location);
-}
-
 // Greedily fills a seat instance's remaining gap from a pool of students,
 // picking the best-scoring candidate each round. Hard constraints enforced
 // here, all via ctx: a student's assignment is truncated so their running
-// weekly total never exceeds their weekly cap (ctx.weeklyMinutes), and no
-// assignment is ever shorter than the 4-hour minimum. Unlike PMO, there is
-// NO one-shift-per-day exclusion here - USS LITS explicitly allows split
-// shifts, so a student can appear more than once in a day (including at a
-// different desk), as long as their available time (tracked via
-// ctx.consume, shared across every desk for that student/day) never
-// actually overlaps. Mutates seatInstance.gap and the availability/
-// weeklyMinutes/daysWorked tracked in ctx as it assigns. `forcedReason`, if
-// given, overrides the auto mix-note. When `avoidOrphans` is true (the
-// default), a candidate is skipped ONLY if their own weekly cap (not real
-// availability) is what would truncate the assignment short and leave a
-// sub-4-hour, un-assignable sliver of the gap behind - a gap caused by the
-// candidate's genuine availability is never grounds to skip them.
+// weekly total never exceeds their weekly cap (ctx.weeklyMinutes), AND
+// never exceeds their own per-pick target shift length (ctx.
+// targetShiftMinutesByStudent) - this second cap is what actually spreads
+// someone across several shorter shifts toward their real weekly cap,
+// instead of greedily grabbing a full day and getting stuck (see
+// resolveTargetShiftMinutes). No assignment is ever shorter than the
+// 4-hour minimum. Unlike PMO, there is NO one-shift-per-day exclusion here
+// - USS LITS explicitly allows split shifts, so a student can appear more
+// than once in a day (including at a different desk), as long as their
+// available time (tracked via ctx.consume, shared across every desk for
+// that student/day) never actually overlaps. Mutates seatInstance.gap and
+// the availability/weeklyMinutes/daysWorked tracked in ctx as it assigns.
+// `forcedReason`, if given, overrides the auto mix-note. When
+// `avoidOrphans` is true (the default), a candidate is skipped ONLY if
+// their own cap (weekly or per-pick) - not real availability - is what
+// would truncate the assignment short and leave a sub-4-hour,
+// un-assignable sliver of the gap behind - a gap caused by the candidate's
+// genuine availability is never grounds to skip them.
 function fillSeatFromPool(seatInstance, pool, ctx, forcedReason, avoidOrphans = true) {
-  const { day, getAvailability, consume, weeklyMinutes, daysWorkedSet, generatedRows, maxWeeklyMinutesByStudent } = ctx;
+  const {
+    day,
+    getAvailability,
+    consume,
+    weeklyMinutes,
+    daysWorkedSet,
+    generatedRows,
+    maxWeeklyMinutesByStudent,
+    targetShiftMinutesByStudent,
+  } = ctx;
   let progressed = true;
   while (progressed) {
     progressed = false;
@@ -248,10 +287,12 @@ function fillSeatFromPool(seatInstance, pool, ctx, forcedReason, avoidOrphans = 
         const weeklyCap = maxWeeklyMinutesByStudent.get(student.name) ?? WEEKLY_CAP_MINUTES;
         const remainingBudget = weeklyCap - (weeklyMinutes.get(student.name) || 0);
         if (remainingBudget <= 0) continue; // this student's own weekly cap reached
+        const targetShiftMinutes = targetShiftMinutesByStudent.get(student.name) ?? FULL_DAY_WORKED_MINUTES;
+        const pickBudget = Math.min(remainingBudget, targetShiftMinutes);
         for (const iv of getAvailability(student)) {
           const overlap = intersect(iv, gapWindow);
           if (!overlap) continue;
-          const cappedEnd = budgetCappedEnd(overlap, remainingBudget);
+          const cappedEnd = budgetCappedEnd(overlap, pickBudget);
           if (cappedEnd <= overlap.start) continue;
           const interval = { start: overlap.start, end: cappedEnd };
           const overlapMinutes = interval.end - interval.start;
@@ -272,11 +313,7 @@ function fillSeatFromPool(seatInstance, pool, ctx, forcedReason, avoidOrphans = 
         }
       }
       if (best) {
-        const reason =
-          forcedReason ||
-          (best.student.primaryLocation && best.student.primaryLocation !== seatInstance.location
-            ? `floater: normally ${best.student.primaryLocation}`
-            : '');
+        const reason = forcedReason || '';
         const lunchNote = isFullOfficeDay(best.interval) ? 'includes unpaid lunch 12-1 PM (8 hrs counted)' : '';
         const fullReason = [reason, lunchNote].filter(Boolean).join('; ');
         generatedRows.push({
@@ -300,11 +337,11 @@ function fillSeatFromPool(seatInstance, pool, ctx, forcedReason, avoidOrphans = 
   }
 }
 
-// students: [{ name, role: 'OMB'|'NW'|'CSB', primaryLocation, maxHours }]
-//   role and primaryLocation are the same value for USS LITS (there's no
-//   separate "which pool" vs "which desk" distinction like PMO's Front
-//   Desk/Back Office/Floater split) - Student Master's Primary Location
-//   column should just repeat the Role value per student. maxHours is this
+// students: [{ name, role: 'OMB/CSB'|'NW', maxHours }]
+//   Role is formula-derived on Student Master from Supervisor (Amanda Jones
+//   -> 'OMB/CSB', Ivan Saldivia -> 'NW') - there's no Primary Location
+//   column and no per-student home-desk preference within 'OMB/CSB'; any
+//   such student is equally eligible for either desk. maxHours is this
 //   student's own weekly cap override (Student Master's Max Hours column);
 //   blank/0/non-numeric falls back to the 19-hour default. Caller is
 //   expected to have already filtered to Active students.
@@ -315,21 +352,21 @@ function generateWeeklySchedule({ students, classRows, timeOffRows, manualRows, 
   const { byStudent: manualByStudent, bySeat: manualBySeat } = buildManualOccupancy(manualRows);
 
   const nw = students.filter((s) => s.role === 'NW');
-  const ombAndCsb = students.filter((s) => s.role === 'OMB' || s.role === 'CSB');
+  const ombAndCsb = students.filter((s) => s.role === 'OMB/CSB');
 
   const generatedRows = [];
   const gaps = [];
   const warnings = [];
 
-  const knownRoles = new Set(['OMB', 'NW', 'CSB']);
+  const knownRoles = new Set(['OMB/CSB', 'NW']);
   const unrecognizedRoleNames = students.filter((s) => !knownRoles.has(s.role)).map((s) => s.name);
   if (unrecognizedRoleNames.length > 0) {
     warnings.push(
-      `These active students have no recognized Role (must be "OMB", "NW", or "CSB") and were skipped: ${unrecognizedRoleNames.join(', ')}.`
+      `These active students have no recognized Role (must be "OMB/CSB" or "NW") and were skipped: ${unrecognizedRoleNames.join(', ')}.`
     );
   }
   if (nw.length === 0) warnings.push('No students have Role = NW.');
-  if (ombAndCsb.length === 0) warnings.push('No students have Role = OMB or CSB.');
+  if (ombAndCsb.length === 0) warnings.push('No students have Role = OMB/CSB.');
 
   // Both persist across the whole week (not reset per day) - this is what
   // makes each student's weekly cap actually weekly, and the day-spread
@@ -341,6 +378,15 @@ function generateWeeklySchedule({ students, classRows, timeOffRows, manualRows, 
 
   const maxWeeklyMinutesByStudent = new Map(
     students.map((s) => [s.name, resolveMaxWeeklyMinutes(s.maxHours)])
+  );
+
+  // Precomputed once per student (not recalculated day-to-day) so the target
+  // shift length stays stable regardless of which pass/day visits them first
+  // - see resolveTargetShiftMinutes for why this is what actually lets
+  // someone reach close to their real weekly cap instead of stalling 3
+  // hours short of it.
+  const targetShiftMinutesByStudent = new Map(
+    students.map((s) => [s.name, resolveTargetShiftMinutes(maxWeeklyMinutesByStudent.get(s.name))])
   );
 
   // Manual rows are pre-existing commitments the generator didn't create,
@@ -403,6 +449,7 @@ function generateWeeklySchedule({ students, classRows, timeOffRows, manualRows, 
         daysWorkedSet,
         generatedRows,
         maxWeeklyMinutesByStudent,
+        targetShiftMinutesByStudent,
       },
       nwInstance: { location: 'NW', gap: subtractIntervals(seatBase(), nwManual) },
       ombInstance: { location: 'OMB', gap: subtractIntervals(seatBase(), ombManual) },
@@ -419,25 +466,16 @@ function generateWeeklySchedule({ students, classRows, timeOffRows, manualRows, 
     fillSeatFromPool(nwInstance, nw, ctx);
   }
 
-  // Pass 2: OMB, home students first (their own claim across the whole
-  // week, ahead of CSB below), then the rest of the combined OMB/CSB
-  // floater pool for whatever gap remains.
-  for (const day of WEEKDAYS) {
-    const { ctx, ombInstance } = perDay.get(day);
-    fillSeatFromPool(ombInstance, homePool(ombAndCsb, 'OMB'), ctx);
-  }
+  // Pass 2: OMB, filled from the single combined OMB/CSB pool - no home-desk
+  // tier (there's no per-student preference between OMB and CSB), just
+  // whole-week priority over CSB below.
   for (const day of WEEKDAYS) {
     const { ctx, ombInstance } = perDay.get(day);
     fillSeatFromPool(ombInstance, ombAndCsb, ctx);
   }
 
-  // Pass 3: CSB - the 2nd-priority desk. Home students first, then
-  // whatever's left of the combined pool (i.e. OMB people flexing into
-  // CSB), using only the capacity OMB didn't already claim above.
-  for (const day of WEEKDAYS) {
-    const { ctx, csbInstance } = perDay.get(day);
-    fillSeatFromPool(csbInstance, homePool(ombAndCsb, 'CSB'), ctx);
-  }
+  // Pass 3: CSB - the 2nd-priority desk, filled from the same combined pool
+  // using only whatever capacity OMB's pass didn't already claim above.
   for (const day of WEEKDAYS) {
     const { ctx, csbInstance } = perDay.get(day);
     fillSeatFromPool(csbInstance, ombAndCsb, ctx);

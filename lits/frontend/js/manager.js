@@ -20,9 +20,29 @@ const SEAT_CAPACITY = { OMB: 1, NW: 1, CSB: 1 };
 const TUTORIAL_VIDEO_URL = '';
 
 let currentWorkScheduleRows = [];
-let currentRoster = []; // [{name, role, primaryLocation, active, maxHours, extension, phone}] - populated by loadRoster(), reused by the Excel export to split by Role
+let currentRoster = []; // [{name, role, active, maxHours, extension, phone}] - populated by loadRoster(), reused by the Excel export
 let currentSupervisors = []; // [{name, phone}] - populated by loadSupervisors(), shown at the bottom of both Excel export boxes
 let currentClassScheduleRows = []; // raw Class Schedule rows - populated by loadClassScheduleView(), reused by the Excel export to look up Expected Grad
+let currentTimeOffRows = []; // populated by loadPendingTimeOff(), reused by the stat cards for the Pending count
+let lastGapsCount = null; // set by handleGenerate(); null until a Generate has run this session, shown as "-" in the stat card until then
+
+// --- Overview stat cards ---
+// Purely derived from whatever's already loaded elsewhere on the page (no
+// separate endpoint) - called after each of the loads/actions that could
+// change one of these numbers, so the row is always in sync with the rest
+// of the dashboard.
+function renderStatCards() {
+  const activeCount = currentRoster.filter((s) => s.active).length;
+  document.getElementById('stat-active-students').textContent = activeCount;
+
+  const gapsEl = document.getElementById('stat-open-gaps');
+  const gapsSubEl = document.getElementById('stat-open-gaps-sub');
+  gapsEl.textContent = lastGapsCount === null ? '—' : lastGapsCount;
+  gapsSubEl.textContent = lastGapsCount === null ? 'run Generate to check' : 'as of last Generate';
+
+  const pendingCount = currentTimeOffRows.filter((r) => r['Status'] === 'Pending').length;
+  document.getElementById('stat-pending-timeoff').textContent = pendingCount;
+}
 
 function to12Hour(time24) {
   if (!time24) return '';
@@ -70,12 +90,13 @@ async function loadRoster() {
       .forEach((s) => {
         const opt = document.createElement('option');
         opt.value = s.name;
-        opt.textContent = `${s.name} (${s.role}${s.primaryLocation ? ' - ' + s.primaryLocation : ''})`;
+        opt.textContent = `${s.name} (${s.role})`;
         select.appendChild(opt);
       });
   } catch (err) {
     select.innerHTML = `<option value="">Could not load roster: ${err.message}</option>`;
   }
+  renderStatCards();
 }
 
 // Shared contact list (Supervisors sheet) shown identically at the bottom of
@@ -119,8 +140,12 @@ function renderChip(row) {
   const otherNotes = noteSegments.filter((s) => s !== lunchSegment).join('; ');
   const lunchCoverBy = lunchSegment ? lunchSegment.replace(/^lunch covered by\s*/i, '') : '';
 
+  // Desk color-coding (chip-loc-omb/nw/csb, see manager.css) - applied
+  // regardless of Manual/Generated, but chip-manual is declared later in
+  // the stylesheet so its amber border still wins on a manual chip.
+  const locClass = { OMB: 'chip-loc-omb', NW: 'chip-loc-nw', CSB: 'chip-loc-csb' }[row['Location']] || '';
   const chip = document.createElement('div');
-  chip.className = `chip${isManual ? ' chip-manual' : ''}`;
+  chip.className = `chip ${locClass}${isManual ? ' chip-manual' : ''}`;
   chip.innerHTML = `
     <div class="chip-name">${row['Student Name'] || ''}</div>
     <div class="chip-time">${row['Start Time'] || ''} - ${row['End Time'] || ''}</div>
@@ -162,6 +187,7 @@ async function loadCalendar() {
   });
 
   renderWeeklyHours();
+  renderStatCards();
 }
 
 // --- Copy for Excel ---
@@ -494,14 +520,12 @@ async function loadClassScheduleView() {
   try {
     const [roster, classRows] = await Promise.all([api.getStudentsRoster(), api.getAllClassSchedule()]);
     currentClassScheduleRows = classRows;
-    const roleOrder = { OMB: 0, NW: 1, CSB: 2 };
+    const roleOrder = { 'OMB/CSB': 0, NW: 1 };
     const active = roster
       .filter((s) => s.active)
       .sort((a, b) => {
-        const roleDiff = (roleOrder[a.role] ?? 3) - (roleOrder[b.role] ?? 3);
+        const roleDiff = (roleOrder[a.role] ?? 2) - (roleOrder[b.role] ?? 2);
         if (roleDiff !== 0) return roleDiff;
-        const locDiff = (a.primaryLocation || '').localeCompare(b.primaryLocation || '');
-        if (locDiff !== 0) return locDiff;
         return a.name.localeCompare(b.name);
       });
 
@@ -509,7 +533,7 @@ async function loadClassScheduleView() {
     active.forEach((student) => {
       const tr = document.createElement('tr');
       const nameTd = document.createElement('td');
-      nameTd.innerHTML = `<strong>${student.name}</strong><br><span class="hint">${student.role}${student.primaryLocation ? ' - ' + student.primaryLocation : ''}</span>`;
+      nameTd.innerHTML = `<strong>${student.name}</strong><br><span class="hint">${student.role}</span>`;
       tr.appendChild(nameTd);
 
       DAYS.forEach((day) => {
@@ -532,6 +556,29 @@ async function loadClassScheduleView() {
     });
   } catch (err) {
     tbody.innerHTML = `<tr><td colspan="6">Could not load unavailable schedule: ${err.message}</td></tr>`;
+  }
+}
+
+// --- Sync roster from the shared IT Student Worker Tracker ---
+async function handleSyncRoster() {
+  const statusEl = document.getElementById('sync-roster-status');
+  const btn = document.getElementById('sync-roster-btn');
+  btn.disabled = true;
+  showStatus(statusEl, 'Syncing...', 'status');
+  try {
+    const result = await api.syncStudents();
+    showStatus(
+      statusEl,
+      result.added > 0
+        ? `Added ${result.added} new student(s): ${result.employeeIds.join(', ')}.`
+        : 'No new USS-LITS workers found in the Tracker.',
+      'success'
+    );
+    await loadRoster();
+  } catch (err) {
+    showStatus(statusEl, `Sync failed: ${err.message}`, 'error');
+  } finally {
+    btn.disabled = false;
   }
 }
 
@@ -567,6 +614,7 @@ async function handleGenerate() {
 
   try {
     const result = await api.generateSchedule(semester, asOfDate || undefined, overrideManual);
+    lastGapsCount = result.gaps.length;
     showStatus(
       statusEl,
       `Added ${result.added} generated rows, removed ${result.removed} previous ${result.overrodeManual ? '' : 'generated '}rows.` +
@@ -749,6 +797,7 @@ async function loadPendingTimeOff() {
   const emptyMsg = document.getElementById('time-off-empty');
   try {
     const rows = await api.getTimeOff();
+    currentTimeOffRows = rows;
     const statusOrder = { Pending: 0, Approved: 1, Denied: 2 };
     const sorted = [...rows].sort((a, b) => (statusOrder[a['Status']] ?? 3) - (statusOrder[b['Status']] ?? 3));
     tbody.innerHTML = '';
@@ -781,6 +830,7 @@ async function loadPendingTimeOff() {
   } catch (err) {
     tbody.innerHTML = `<tr><td colspan="7">Could not load time-off requests: ${err.message}</td></tr>`;
   }
+  renderStatCards();
 }
 
 async function setTimeOffStatus(rowId, status) {
@@ -793,6 +843,7 @@ async function setTimeOffStatus(rowId, status) {
 }
 
 // --- Init ---
+document.getElementById('sync-roster-btn').addEventListener('click', handleSyncRoster);
 document.getElementById('generate-btn').addEventListener('click', handleGenerate);
 document.getElementById('show-gaps-btn').addEventListener('click', (e) => {
   const gapsPanel = document.getElementById('gaps-panel');

@@ -55,6 +55,8 @@ const api = {
 
   getStudentsRoster: () => apiRequest('/api/students/roster'),
 
+  syncStudents: () => apiRequest('/api/students/sync', { method: 'POST' }),
+
   getSupervisors: () => apiRequest('/api/supervisors'),
 
   getWorkSchedule: (semester) =>

@@ -49,7 +49,6 @@ router.post('/generate', async (req, res) => {
       .map((row) => ({
         name: row['Student Name'],
         role: row['Role'],
-        primaryLocation: row['Primary Location'],
         maxHours: row['Max Hours'],
       }))
       .filter((student) => student.name);
