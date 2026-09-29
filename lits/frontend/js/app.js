@@ -20,7 +20,7 @@ const currentStudentBanner = document.getElementById('current-student');
 const currentStudentName = document.getElementById('current-student-name');
 const switchStudentBtn = document.getElementById('switch-student-btn');
 
-let currentStudents = []; // [{name, studentId, email}] - populated by loadStudents(), used to look up the signed-in student's email for time-off submissions
+let currentStudents = []; // [{name, studentId}] - populated by loadStudents(), builds the name dropdown
 
 function showError(el, message) {
   el.textContent = message;
@@ -298,10 +298,12 @@ timeOffForm.addEventListener('submit', async (e) => {
     startDate: document.getElementById('to-start').value,
     endDate: document.getElementById('to-end').value,
     reason: document.getElementById('to-reason').value,
-    // Populates the Email column on Time Off Requests, which the "Time-off
-    // status update" Smartsheet Automation alerts when Status changes -
-    // that's how the submitting student gets notified of approval/denial.
-    email: (currentStudents.find((s) => s.name === studentName) || {}).email || '',
+    // No Email field here - Time Off Requests' own Email column is a
+    // Smartsheet formula (INDEX/MATCH against Student Master's Email by
+    // Student Name), so it self-populates. Used to be looked up and sent
+    // from here before that formula existed; sending it now would just be
+    // ignored (and briefly, before the backend caught up, broke submission
+    // entirely - Smartsheet rejects any direct write to a formula cell).
   };
   try {
     await api.submitTimeOff(request);
@@ -328,12 +330,9 @@ if (TUTORIAL_VIDEO_URL) {
 }
 
 // --- Init ---
-// loadStudents() is awaited before auto-restoring a returning student -
-// setActiveStudent() doesn't itself need the roster, but currentStudents
-// must be populated before they could possibly submit a time-off request,
-// otherwise the email lookup silently comes back blank (a returning student
-// never re-picks their name, so there's no other point that would populate
-// it in time).
+// loadStudents() is awaited before auto-restoring a returning student so the
+// name dropdown is populated for the "switch student" path even though
+// setActiveStudent() itself doesn't need the roster.
 (async function init() {
   fillSemesterSelect(document.getElementById('cs-semester'));
   await loadStudents();

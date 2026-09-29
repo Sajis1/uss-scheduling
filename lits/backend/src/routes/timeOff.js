@@ -20,10 +20,11 @@ router.get('/', async (req, res) => {
 });
 
 // POST /api/time-off -> submit a new request. Status always starts Pending;
-// approval/denial happens later (manager dashboard in Phase 2/3), not here.
+// approval happens entirely via the "Time Off Approval" Smartsheet
+// Automation (see below), not here.
 router.post('/', async (req, res) => {
   try {
-    const { studentName, startDate, endDate, reason, email } = req.body;
+    const { studentName, startDate, endDate, reason } = req.body;
     if (!studentName || !startDate || !endDate) {
       return res
         .status(400)
@@ -31,15 +32,24 @@ router.post('/', async (req, res) => {
     }
     const submittedDate = new Date().toISOString().slice(0, 10);
     const row = await addRow(process.env.TIME_OFF_SHEET_ID, {
+      // Calendar Title is what the approval automation displays as the
+      // requester's name ({{Calendar Title}} in its email) - it's a plain
+      // column, not a formula, so the backend has to set it directly or
+      // every approval email shows a blank name.
+      'Calendar Title': studentName,
       'Student Name': studentName,
       'Start Date': startDate,
       'End Date': endDate,
       Reason: reason || '',
       Status: 'Pending',
       'Submitted Date': submittedDate,
-      // Feeds the "Time-off status update" Smartsheet Automation, which
-      // alerts whoever's in this column when Status changes.
-      Email: email || '',
+      // Email is NOT written here - it's a Smartsheet formula on this sheet
+      // (INDEX/MATCH against Student Master's Email by Student Name), so it
+      // self-populates once Student Master's own Email column has real
+      // values. Smartsheet's API rejects any direct write to a formula
+      // cell (this is exactly what broke submission until 2026-09-29 -
+      // "Smartsheet API error (400): You cannot edit cells with Column
+      // Formula").
     });
     res.status(201).json(row);
   } catch (err) {
@@ -54,9 +64,9 @@ router.post('/', async (req, res) => {
 // deliberately no backend endpoint that writes Status. A PATCH
 // /:rowId/status route used to let the manager dashboard set it directly;
 // removed 2026-09-29 once that Smartsheet workflow was confirmed built and
-// authoritative, so a second write path was no longer wanted. Note: Status
-// is a multi-select column on the real sheet, not a plain dropdown - if this
-// endpoint is ever reintroduced, `updateRow` would need to send an array
-// value, not a bare string.
+// authoritative, so a second write path was no longer wanted. Status is a
+// plain TEXT_NUMBER column (confirmed via the Smartsheet API's own column
+// metadata, 2026-09-29) - an earlier version of this comment guessed
+// multi-select from the automation UI's wording alone, which was wrong.
 
 module.exports = router;

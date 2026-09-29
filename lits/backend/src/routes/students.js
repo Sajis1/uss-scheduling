@@ -19,7 +19,6 @@ router.get('/', async (req, res) => {
       .map((row) => ({
         name: row['Student Name'],
         studentId: row['Employee ID'],
-        email: row['Email'],
       }))
       .filter((student) => student.name);
     res.json(activeStudents);
