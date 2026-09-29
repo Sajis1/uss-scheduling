@@ -75,18 +75,29 @@ desk, unlike PMO's 2-seat front desk.
 
 ## Time off
 
-Time-off requests use the same Smartsheet-approval model PMO's tool already
-uses (submit â†’ Pending â†’ manager Approves/Denies in the dashboard). An
-approved request covering the date the schedule is generated for excludes
+An approved request covering the date the schedule is generated for excludes
 that student from the generated pattern entirely for that run.
 
-Time Off Requests additionally has a **Supervisor** column (looked up from
-Student Master by Student Name) and a **Supervisor Approval** column feeding
-a Smartsheet Automation that routes each request to Amanda Jones (for
-`OMB/CSB` students) or Ivan Saldivia (for `NW` students) and sets `Status` on
-approve/decline. This runs independently of the manager dashboard's own
-Approve/Deny buttons, which also set `Status` directly â€” see open question 5
-below.
+**Approval is entirely a Smartsheet workflow now** (confirmed live,
+2026-09-29 â€” corrects the "dual approval paths" question this doc used to
+flag). The "Time Off Approval" automation on Time Off Requests:
+1. Triggers on any new row (Status starts blank/Pending).
+2. Branches by **Supervisor** (looked up from Student Master by Student
+   Name): `Amanda Jones` â†’ one branch, `Ivan Saldivia` â†’ the other.
+3. Sends a structured **"Request an approval"** action to a shared **IT PMO
+   Mailbox**, with the request's `Calendar Title` (the sheet's primary
+   column, doubling as the student's display name), dates, and reason in
+   the message. The response is recorded into a column named after that
+   branch's supervisor (`Amanda Jones` / `Ivan Saldivia` â€” two separate
+   columns, not one shared "Supervisor Approval" column as earlier assumed).
+4. On Approve/Decline, emails the student (via the `Email` column) and sets
+   **`Status`** â€” which is a **multi-select** column in the real sheet, not
+   a plain single-value dropdown.
+
+The manager dashboard shows Time Off Requests **read-only** â€” it used to
+have its own Approve/Deny buttons that set `Status` directly via
+`PATCH /api/time-off/:rowId/status`; removed 2026-09-29 once this workflow
+was confirmed built and authoritative, so there's one approval path, not two.
 
 ## How the generator actually decides (`backend/src/scheduler.js`)
 
@@ -166,26 +177,21 @@ with the LITS team before treating them as final:
    (Front Desk vs. Floater/Back Office). LITS has no analogous two-way split
    among NW/OMB/CSB, so v1 builds one box covering everyone. Confirm if a
    different split (e.g. by building: NW+OMB vs. CSB) is wanted instead.
-5. **Two approval paths for time off.** The Supervisor Approval Smartsheet
-   Automation and the manager dashboard's Approve/Deny buttons both set the
-   same `Status` field independently. Decide whether the dashboard buttons
-   stay as a manual fallback/override once the automation is fully wired up
-   (real recipient emails filled in), or whether approval should happen
-   exclusively through one path going forward.
+5. ~~Two approval paths for time off.~~ **RESOLVED 2026-09-29** â€” the
+   dashboard's Approve/Deny buttons are removed; the Smartsheet "Time Off
+   Approval" workflow (IT PMO Mailbox routing) is the sole approval path.
+   See "Time off" above for the full mechanism.
 6. **`Active` column's Smartsheet type.** It's formula-driven
    (`=IF(...,1,0)`) off the Tracker's "Actively Employed" column. The backend
    does a strict `row['Active'] === true` check, which only works if this is
    a genuine Checkbox-type column in Smartsheet (not Text/Number) â€” confirm
    the column type if the roster/scheduler ever silently returns nobody.
-7. **`Role` didn't auto-fill on a freshly-synced row (found live, 2026-09-16).**
-   The roster sync (see below) inserted a bare `Employee ID` for a new
-   student; Student Master's `Supervisor` formula correctly resolved on that
-   new row, but `Role` (which depends on `Supervisor` in the same row) stayed
-   blank even after Supervisor filled in. Likely cause: `Role` may not
-   actually be registered as a Smartsheet **Column Formula** the way
-   `Supervisor`/`Student Name`/etc. are (i.e. it may have only been typed
-   into the original handful of rows individually) â€” check via right-click
-   the `Role` column header: if "Convert to Column Formula" is still
-   offered (not greyed out), that's the fix. Until resolved, **every
-   sync-added student will need Role manually checked/fixed** before they're
-   schedulable, not just Supervisor.
+7. ~~`Role` didn't auto-fill on a freshly-synced row.~~ **RESOLVED
+   2026-09-16** by the user directly in Smartsheet (likely re-converting
+   `Role` to a genuine Column Formula) â€” confirmed working since.
+8. **Two mechanisms both added new Student Master rows.** A
+   `POST /api/students/sync` backend route and a Smartsheet Copy Row
+   automation on the Tracker ("Copy new USS-LITS students to Student
+   Master") were both live at the same time, risking duplicate rows for one
+   new hire. **RESOLVED 2026-09-29** â€” the backend route is removed; the
+   Smartsheet automation is the sole mechanism now.

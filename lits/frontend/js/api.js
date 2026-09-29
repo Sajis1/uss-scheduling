@@ -47,15 +47,7 @@ const api = {
   submitTimeOff: (request) =>
     apiRequest('/api/time-off', { method: 'POST', body: JSON.stringify(request) }),
 
-  setTimeOffStatus: (rowId, status) =>
-    apiRequest(`/api/time-off/${rowId}/status`, {
-      method: 'PATCH',
-      body: JSON.stringify({ status }),
-    }),
-
   getStudentsRoster: () => apiRequest('/api/students/roster'),
-
-  syncStudents: () => apiRequest('/api/students/sync', { method: 'POST' }),
 
   getSupervisors: () => apiRequest('/api/supervisors'),
 

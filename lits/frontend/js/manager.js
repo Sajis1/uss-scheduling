@@ -559,29 +559,6 @@ async function loadClassScheduleView() {
   }
 }
 
-// --- Sync roster from the shared IT Student Worker Tracker ---
-async function handleSyncRoster() {
-  const statusEl = document.getElementById('sync-roster-status');
-  const btn = document.getElementById('sync-roster-btn');
-  btn.disabled = true;
-  showStatus(statusEl, 'Syncing...', 'status');
-  try {
-    const result = await api.syncStudents();
-    showStatus(
-      statusEl,
-      result.added > 0
-        ? `Added ${result.added} new student(s): ${result.employeeIds.join(', ')}.`
-        : 'No new USS-LITS workers found in the Tracker.',
-      'success'
-    );
-    await loadRoster();
-  } catch (err) {
-    showStatus(statusEl, `Sync failed: ${err.message}`, 'error');
-  } finally {
-    btn.disabled = false;
-  }
-}
-
 // --- Generate ---
 async function handleGenerate() {
   const semester = document.getElementById('semester-input').value.trim();
@@ -788,10 +765,12 @@ async function handleShiftFormSubmit(e) {
 }
 
 // --- Time off ---
-// Shows every request, not just Pending ones - Approve/Deny only renders for
-// a row still awaiting a decision; Approved/Denied rows just show their
-// status as plain text instead. Pending requests sort first so the ones
-// needing action are still the easiest to spot.
+// Read-only: approval happens entirely in Smartsheet now (the "Time Off
+// Approval" automation on this sheet routes each request to IT PMO Mailbox
+// by Supervisor, records the response, then sets Status) - removed the
+// dashboard's own Approve/Deny buttons 2026-09-29 so there's a single
+// authoritative approval path instead of two. Pending requests still sort
+// first so they're the easiest to spot at a glance.
 async function loadPendingTimeOff() {
   const tbody = document.querySelector('#time-off-table tbody');
   const emptyMsg = document.getElementById('time-off-empty');
@@ -803,8 +782,6 @@ async function loadPendingTimeOff() {
     tbody.innerHTML = '';
     emptyMsg.hidden = sorted.length > 0;
     sorted.forEach((row) => {
-      const status = row['Status'] || '';
-      const isPending = status === 'Pending';
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td>${row['Student Name'] || ''}</td>
@@ -812,38 +789,17 @@ async function loadPendingTimeOff() {
         <td>${row['End Date'] || ''}</td>
         <td>${row['Reason'] || ''}</td>
         <td>${row['Submitted Date'] || ''}</td>
-        <td>${htmlEscape(status)}</td>
-        <td>
-          ${
-            isPending
-              ? '<button type="button" class="approve-btn">Approve</button><button type="button" class="deny-btn">Deny</button>'
-              : ''
-          }
-        </td>
+        <td>${htmlEscape(row['Status'] || '')}</td>
       `;
-      if (isPending) {
-        tr.querySelector('.approve-btn').addEventListener('click', () => setTimeOffStatus(row.rowId, 'Approved'));
-        tr.querySelector('.deny-btn').addEventListener('click', () => setTimeOffStatus(row.rowId, 'Denied'));
-      }
       tbody.appendChild(tr);
     });
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="7">Could not load time-off requests: ${err.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6">Could not load time-off requests: ${err.message}</td></tr>`;
   }
   renderStatCards();
 }
 
-async function setTimeOffStatus(rowId, status) {
-  try {
-    await api.setTimeOffStatus(rowId, status);
-    await loadPendingTimeOff();
-  } catch (err) {
-    appAlert(`Could not update request: ${err.message}`);
-  }
-}
-
 // --- Init ---
-document.getElementById('sync-roster-btn').addEventListener('click', handleSyncRoster);
 document.getElementById('generate-btn').addEventListener('click', handleGenerate);
 document.getElementById('show-gaps-btn').addEventListener('click', (e) => {
   const gapsPanel = document.getElementById('gaps-panel');

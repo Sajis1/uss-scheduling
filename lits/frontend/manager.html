@@ -39,16 +39,6 @@
     </section>
 
       <section class="card">
-        <h2>Sync Roster from Tracker</h2>
-        <p class="hint">
-          Pulls new USS-LITS workers from the Tracker into Student Master (Employee ID only
-          &mdash; everything else self-populates). Existing rows are untouched.
-        </p>
-        <button id="sync-roster-btn" type="button">Sync Roster</button>
-        <p id="sync-roster-status" class="status" hidden></p>
-      </section>
-
-      <section class="card">
         <h2>Generate Schedule</h2>
         <p class="hint">
           Fills NW first (NW-only, no backup), then OMB, then CSB (OMB/CSB flex into each
@@ -212,10 +202,10 @@
 
       <section class="card">
         <h2>Time Off Requests</h2>
-        <p class="hint">Approve/Deny shows for pending requests only.</p>
+        <p class="hint">Read-only &mdash; approval happens in Smartsheet (Time Off Approval workflow).</p>
         <table id="time-off-table">
           <thead>
-            <tr><th>Student</th><th>Start</th><th>End</th><th>Reason</th><th>Submitted</th><th>Status</th><th>Actions</th></tr>
+            <tr><th>Student</th><th>Start</th><th>End</th><th>Reason</th><th>Submitted</th><th>Status</th></tr>
           </thead>
           <tbody></tbody>
         </table>

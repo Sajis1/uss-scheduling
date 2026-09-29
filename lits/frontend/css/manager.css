@@ -400,7 +400,6 @@
 #refresh-calendar-btn,
 #generate-btn,
 #show-gaps-btn,
-#sync-roster-btn,
 #shift-cancel-btn {
   margin-top: var(--space-2);
   padding: 0.6rem 1.35rem;
@@ -412,8 +411,7 @@
 }
 
 #generate-btn,
-#show-gaps-btn,
-#sync-roster-btn {
+#show-gaps-btn {
   background: linear-gradient(135deg, #14a5c9 0%, var(--brand) 55%, var(--brand-dark) 100%);
   color: white;
   border: none;
@@ -421,13 +419,11 @@
 }
 
 #generate-btn:hover,
-#show-gaps-btn:hover,
-#sync-roster-btn:hover {
+#show-gaps-btn:hover {
   box-shadow: 0 5px 18px rgba(14, 116, 144, 0.45);
   transform: translateY(-1px);
 }
 
-#sync-roster-btn:disabled,
 #generate-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
@@ -504,32 +500,3 @@
   background: #24406f;
 }
 
-#time-off-table button {
-  margin-right: 0.5rem;
-  padding: 0.35rem 0.8rem;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: white;
-  cursor: pointer;
-  font-size: 0.85rem;
-  font-weight: 600;
-  transition: background 0.15s ease, color 0.15s ease;
-}
-
-#time-off-table button.approve-btn {
-  border-color: var(--success);
-  color: var(--success);
-}
-
-#time-off-table button.approve-btn:hover {
-  background: var(--success-light);
-}
-
-#time-off-table button.deny-btn {
-  border-color: var(--danger);
-  color: var(--danger);
-}
-
-#time-off-table button.deny-btn:hover {
-  background: var(--danger-light);
-}

@@ -1,5 +1,5 @@
 const express = require('express');
-const { getRows, addRow, updateRow } = require('../smartsheetClient');
+const { getRows, addRow } = require('../smartsheetClient');
 
 const router = express.Router();
 
@@ -48,24 +48,15 @@ router.post('/', async (req, res) => {
   }
 });
 
-// PATCH /api/time-off/:rowId/status -> manager approves or denies a request.
-// This is the minimal infrastructure Phase 2's schedule generator needs (it
-// only excludes Approved time off). Full approval-workflow polish (audit
-// trail, notifications) is Phase 3.
-router.patch('/:rowId/status', async (req, res) => {
-  try {
-    const { status } = req.body;
-    if (status !== 'Approved' && status !== 'Denied') {
-      return res.status(400).json({ error: 'status must be "Approved" or "Denied".' });
-    }
-    const row = await updateRow(process.env.TIME_OFF_SHEET_ID, Number(req.params.rowId), {
-      Status: status,
-    });
-    res.json(row);
-  } catch (err) {
-    console.error('PATCH /api/time-off/:rowId/status failed:', err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
+// Approval itself happens entirely in Smartsheet now (the "Time Off
+// Approval" automation on this sheet: routes to IT PMO Mailbox by
+// Supervisor, records the response, then sets Status) - there is
+// deliberately no backend endpoint that writes Status. A PATCH
+// /:rowId/status route used to let the manager dashboard set it directly;
+// removed 2026-09-29 once that Smartsheet workflow was confirmed built and
+// authoritative, so a second write path was no longer wanted. Note: Status
+// is a multi-select column on the real sheet, not a plain dropdown - if this
+// endpoint is ever reintroduced, `updateRow` would need to send an array
+// value, not a bare string.
 
 module.exports = router;

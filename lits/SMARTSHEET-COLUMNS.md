@@ -16,8 +16,12 @@ CLASS_SCHEDULE_SHEET_ID=      # sheet is actually named "USS LITS Unavailable Sc
 TIME_OFF_SHEET_ID=
 WORK_SCHEDULE_SHEET_ID=
 SUPERVISORS_SHEET_ID=
-IT_TRACKER_SHEET_ID=          # the shared "IT Student Worker Tracker" sheet - see the roster sync note below
 ```
+
+The shared **"IT Student Worker Tracker"** sheet (also used by PMO) is not
+one of this app's env vars — the backend never talks to it. New hires reach
+Student Master via a Smartsheet Automation on the Tracker itself; see
+Student Master below.
 
 ## Role model — read this first
 
@@ -48,32 +52,25 @@ student's shifts can land at Location `OMB` or `CSB`, interchangeably.
 
 ## 1. Student Master (sheet: "USS LITS - Student Master")
 
-**Not** fed by a Smartsheet Copy Row automation — that approach was tried
-and explicitly rejected, since Copy Row brings the *source* sheet's columns
-along with it, and Student Master must stay a clean, fixed schema (only the
-columns listed below, ever). Instead, the backend runs its own sync
-(`POST /api/students/sync`, see below) against the shared **"IT Student
-Worker Tracker"** sheet (also used by PMO, spans OPS/TLS/PMO/USS): for every
-Tracker row with `IT Unit` exactly `USS-LITS` whose Employee ID isn't
-already on this sheet, it inserts a bare new row containing **only**
-`Employee ID` — nothing else copied, and no existing row ever touched. Every
-other column below is a Smartsheet **column formula** keyed on that
-`Employee ID`, so it self-populates the instant the bare row lands.
+**Fed by a Smartsheet Automation on the Tracker itself** — "Copy new
+USS-LITS students to Student Master": trigger is rows added/changed where
+`IT Unit` changes to `USS-LITS`, condition `IT Unit` equals `USS-LITS`,
+action Copy Row into this sheet. Confirmed live and active 2026-09-29.
 
-### The sync: `POST /api/students/sync` (`backend/src/routes/students.js`)
+(History: a `POST /api/students/sync` backend route was built 2026-09-16 as
+a *replacement* for this automation, on the assumption Copy Row had been
+rejected in favor of a clean-schema, Employee-ID-only insert. That
+assumption was wrong — the automation was never actually turned off, so for
+about two weeks both mechanisms were live simultaneously, each capable of
+adding a new hire's row independently. Removed the backend route 2026-09-29
+once this was discovered, so there's one mechanism again, not two. If
+Student Master's schema ever needs to go back to "clean, fixed columns
+only," the fix now is to disable this automation and reintroduce the
+backend sync — not the other way around.)
 
-1. Reads the Tracker (`IT_TRACKER_SHEET_ID` env var) and Student Master.
-2. Filters Tracker rows to `row['IT Unit'] === 'USS-LITS'` (exact match).
-3. Collects Tracker Employee IDs, and Student Master's existing Employee
-   IDs, each deduped via a `Set`.
-4. Inserts one new Student Master row per Tracker Employee ID that isn't
-   already present, via `addRows(STUDENT_MASTER_SHEET_ID, [{ 'Employee ID':
-   id }, ...])` — a single field, nothing else.
-5. Returns `{ added, employeeIds }`.
-
-Triggered manually from the manager dashboard's "Sync Roster" button
-(`manager.js` → `handleSyncRoster`) — run it whenever a new worker is added
-to the Tracker under `USS-LITS`, before Generate.
+Every column below except `Employee ID` is a Smartsheet **column formula**
+keyed on that `Employee ID`, so it self-populates regardless of how the row
+arrived.
 
 | Column name | Type | Notes |
 |---|---|---|
@@ -107,28 +104,43 @@ instead — same shape, no formulas). One row per class block per student.
 
 ## 3. Time Off Requests (sheet: "USS LITS - Time Off Requests")
 
-Adapted from PMO's Time Off sheet, with two columns added to route approvals
-by supervisor.
+Adapted from PMO's Time Off sheet, with columns added to route approvals by
+supervisor. **As-built column list confirmed live 2026-09-29** — corrects
+an earlier version of this doc that was missing `Calendar Title` entirely
+and guessed at one shared "Supervisor Approval" column instead of the real
+per-supervisor pair.
 
 | Column name | Type | Notes |
 |---|---|---|
-| Student Name | Text/Number | Must match Student Master exactly. |
+| **Calendar Title** | Text/Number, **primary column** | Not written by the backend at all currently (`routes/timeOff.js`'s POST only sets the fields below). Used as `{{Calendar Title}}` in the approval email to display who's requesting time off — **if nothing populates this, every approval email shows a blank name.** Unconfirmed whether this is meant to be a formula mirroring Student Name, or requires a manual/automation fix. Worth checking before relying on the approval emails. |
+| Student Name | Text/Number | Must match Student Master exactly. Written by the backend on submit. |
 | Start Date | Date | |
 | End Date | Date | |
 | Reason | Text/Number | Optional. |
-| Status | Dropdown | Pending, Approved, Denied. Defaults to Pending. Set by the manager dashboard's Approve/Deny buttons (`PATCH /api/time-off/:rowId/status`). |
+| **Status** | **Multi-select** dropdown | Pending / Approved / Denied. This is a multi-select column, not a plain single-value dropdown — the "Time Off Approval" automation's own "Change cell value" step explicitly checks "Replace existing values in multi-select column" when setting it. `routes/timeOff.js`'s POST writes it as a plain string (`Status: 'Pending'`) on submit, which appears to work for an initial single value; there is no longer a backend PATCH route that overwrites it later (see below). |
 | Submitted Date | Date | Set automatically by the backend on submit. |
-| Email | Contact List | Server-set on submit from the student's Student Master email. |
-| **Supervisor** | Text/Number, **formula** | `=IF([Student Name]@row="","",INDEX({Student Master Supervisor},MATCH([Student Name]@row,{Student Master Student Name},0)))` — looked up from Student Master, not typed. |
-| **Supervisor Approval** | (planned rename target for the old PMO approval column) | Feeds a Smartsheet Automation that branches on Supervisor: `Amanda Jones` → routes to the OMB/CSB approval path, `Ivan Saldivia` → routes to the NW approval path. Each branch emails the student and sets Status on Approve/Decline. **Actual approver recipient addresses are not filled in yet.** |
+| Email | Contact List | Server-set on submit from the student's Student Master email — used by the approval automation to notify the student. |
+| **Supervisor** | Text/Number, **formula** | `=IF([Student Name]@row="","",INDEX({Student Master Supervisor},MATCH([Student Name]@row,{Student Master Student Name},0)))` — looked up from Student Master, not typed. Drives which branch of the approval automation fires. |
+| **Amanda Jones** | Text/Number | Not a person — a column, storing the approval-response payload from the `Amanda Jones` branch's "Request an approval" action ("Save response in" targets this column). Blank unless that branch fired. |
+| **Ivan Saldivia** | Text/Number | Same idea, for the `Ivan Saldivia` branch. |
 
-**Open question worth resolving before relying on this:** the manager
-dashboard already has its own Approve/Deny buttons that PATCH `Status`
-directly (`manager.js` → `setTimeOffStatus`). Once the Supervisor Approval
-automation is live and also writes `Status`, there will be **two independent
-paths that can set the same field** — worth deciding whether the dashboard
-buttons stay as a manual override/fallback, or whether approval is meant to
-happen exclusively through the new Smartsheet automation going forward.
+### The "Time Off Approval" automation (confirmed live, 2026-09-29)
+
+1. **Trigger:** rows added, `Status` is any value.
+2. **Branch by `Supervisor`:** `Amanda Jones` / `Ivan Saldivia`, one path each.
+3. **Request an approval** → sent to a shared **"IT PMO Mailbox"**, response
+   saved into that branch's own column (see table above). Message body:
+   *"Hi, {{Calendar Title}} has requested time off. Start Date: {{Start
+   Date}} End Date: {{End Date}} Reason: {{Reason}} Please click Open
+   Request. Select Approve or Decline."*
+4. **If Approved / If Declined**, each branch: **Alert someone** → sends to
+   the contact in the `Email` column ("Time Off Request Approved" /
+   "Declined", with dates), then **Change cell value** → sets `Status` to
+   `Approved` / `Denied` (multi-select-aware, per above).
+
+This is the **sole** approval path — the manager dashboard shows Time Off
+Requests read-only (no Approve/Deny buttons; the backend's old
+`PATCH /api/time-off/:rowId/status` route is removed, 2026-09-29).
 
 ## 4. Work Schedule (sheet: "USS LITS - Work Schedule")
 
@@ -166,5 +178,5 @@ a row here by hand when a supervisor joins or leaves.
 | Primary Location | Mirrors Role, its own column | **Removed entirely** |
 | Home-desk preference within OMB/CSB | Yes (home pool tried first) | **None** — fully interchangeable |
 | Student ID column | `Student ID` | `Employee ID` (also the Tracker join key) |
-| Time Off Requests | Student Name/Start/End/Reason/Status/Submitted/Email | + `Supervisor`, `Supervisor Approval` |
-| Roster source | Manual entry | Backend-synced Employee ID (`POST /api/students/sync`, NOT a Copy Row automation) + Student Master column formulas |
+| Time Off Requests | Student Name/Start/End/Reason/Status/Submitted/Email | + `Calendar Title`, `Supervisor`, `Amanda Jones`, `Ivan Saldivia`; `Status` is multi-select |
+| Roster source | Manual entry | Copy Row automation on the shared Tracker (`IT Unit` → `USS-LITS`) + Student Master column formulas |
