@@ -144,8 +144,11 @@ Live on **Vercel**, project under the `student-worker-app` account.
 
 - The scheduling algorithm is a greedy heuristic, not a globally-optimal
   solver.
-- USS Service Desk (`uss-scheduling/service-desk/`) doesn't exist yet — this
-  repo currently holds only LITS.
+- USS Service Desk (`uss-scheduling/service-desk/`) is a separate, sibling
+  project in this same repo — its own README, docs, scheduler engine, and
+  (eventually) Vercel project. It does not share code with LITS and is
+  scaffolded but not deployed as of 2026-10-13. See
+  `service-desk/README.md` for its own status, not this file.
 - No request locking/concurrency control (two people editing the same shift
   at once is last-write-wins) — same tradeoff as the no-auth decision.
 - See COVERAGE-POLICY.md's "Open questions" for scheduling-rule specifics
