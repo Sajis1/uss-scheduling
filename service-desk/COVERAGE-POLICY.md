@@ -139,13 +139,21 @@ description of existing code)
   from the full Floater pool next (any Role, not just On-Campus-into-
   Remote), before giving up and reporting a gap. Non-floaters are never
   considered outside their own Role's seat(s).
-- **Hit the 19.75 cap via several shorter shifts, not greedy full days** —
-  directly reuse LITS's `resolveTargetShiftMinutes` approach
-  (`backend/src/scheduler.js` in `lits/`): precompute a per-student target
-  shift length that divides 19.75h evenly (or as evenly as a 15-minute-
-  aligned length allows) instead of grabbing full 8-5 days and stalling
-  short of the cap the way LITS's *first* scheduler version did before
-  that fix.
+- **4 hours is a floor, not a target — CORRECTED 2026-10-21.** An earlier
+  version of this engine borrowed LITS's `resolveTargetShiftMinutes`
+  approach (precompute an even per-student shift length, e.g. 4.75h for a
+  19.75h cap, and cap every pick to it) to avoid LITS's original problem of
+  greedily grabbing full 8-5 days and stalling short of the cap. That
+  turned out to be the wrong fix for Service Desk: it was quietly
+  truncating shifts to ~4.75h even when a student had a wide-open day and
+  budget to spare. User's explicit correction: *"it doesn't have to be
+  strict 4 hrs they can work long shift too if available its just they can
+  only work min 4 hrs."* Removed the target-shift-length cap entirely - the
+  only real ceiling on a single pick now is the student's own remaining
+  weekly budget; 4 hours (`MIN_SHIFT_MINUTES`) is enforced only as a floor
+  (reject a pick shorter than that), never a ceiling. Verified live: shift
+  lengths now range 4.00h-12.00h depending on real availability, instead of
+  clustering near 4.75h regardless of it.
 - **Lunch-backup pattern — RESOLVED 2026-10-13**: confirmed answer was
   "there is always 2 or 3 ppl at a time so they cover each other when one
   go for lunch." That rules out the PMO-style cross-seat pairing (one named

@@ -168,20 +168,13 @@ function workedMinutesFor(interval) {
   return spansLunch(interval) ? raw - (LUNCH_END - LUNCH_START) : raw;
 }
 
-const FULL_DAY_WORKED_MINUTES = 480; // an 8-hour worked day (9 raw hours minus lunch) - the typical "full day" length used for the target-shift-length math below
-
-// Same idea as LITS's resolveTargetShiftMinutes: 19.75h doesn't necessarily
-// divide evenly into full ~8-hour days, so precompute a per-student target
-// shift length that divides their cap evenly (or as close as a 15-minute-
-// aligned length allows) instead of greedily grabbing long shifts and
-// stalling short of the cap the way LITS's first scheduler version did.
-function resolveTargetShiftMinutes(weeklyCapMinutes) {
-  if (weeklyCapMinutes % FULL_DAY_WORKED_MINUTES === 0) {
-    return FULL_DAY_WORKED_MINUTES;
-  }
-  const shiftsThatFit = Math.max(1, Math.floor(weeklyCapMinutes / MIN_SHIFT_MINUTES));
-  return Math.max(MIN_SHIFT_MINUTES, Math.floor(weeklyCapMinutes / shiftsThatFit / 15) * 15);
-}
+// CHANGED 2026-10-21: unlike LITS, shifts are NOT capped to an even
+// "target length" per day here. 4 hours (MIN_SHIFT_MINUTES) is a strict
+// floor, not a ceiling - a student with a wide-open day and budget to
+// spare should get one long shift, not get artificially chopped down.
+// The only real ceiling is their own remaining weekly budget (enforced via
+// `pickBudget = remainingBudget` in fillSeatFromPool/fillMondayOverfillBonus
+// below), not a precomputed even-division length.
 
 function resolveMaxWeeklyMinutes(maxHours) {
   const hours = Number(maxHours);
@@ -279,7 +272,7 @@ function budgetCappedEnd(overlap, remainingBudget) {
 // function (kept here only for the per-student weekly-cap/target-shift
 // bookkeeping, same shape as LITS's fillSeatFromPool).
 function fillSeatFromPool(seatInstance, pool, ctx, forcedReason) {
-  const { day, getAvailability, consume, weeklyMinutes, daysWorkedSet, generatedRows, maxWeeklyMinutesByStudent, targetShiftMinutesByStudent, usedToday } = ctx;
+  const { day, getAvailability, consume, weeklyMinutes, daysWorkedSet, generatedRows, maxWeeklyMinutesByStudent, usedToday } = ctx;
   let progressed = true;
   while (progressed) {
     progressed = false;
@@ -304,8 +297,7 @@ function fillSeatFromPool(seatInstance, pool, ctx, forcedReason) {
         const weeklyCap = maxWeeklyMinutesByStudent.get(student.name) ?? WEEKLY_CAP_MINUTES;
         const remainingBudget = weeklyCap - (weeklyMinutes.get(student.name) || 0);
         if (remainingBudget <= 0) continue;
-        const targetShift = targetShiftMinutesByStudent.get(student.name) ?? FULL_DAY_WORKED_MINUTES;
-        const pickBudget = Math.min(remainingBudget, targetShift);
+        const pickBudget = remainingBudget;
         for (const iv of getAvailability(student)) {
           const spanOverlap = intersect(iv, seatInstance.fullSpan);
           if (!spanOverlap) continue;
@@ -377,7 +369,7 @@ const MONDAY_OVERFILL_WINDOW = { start: 450, end: 720 }; // 7:30 AM-12:00 PM
 const MONDAY_OVERFILL_CAP = 2;
 
 function fillMondayOverfillBonus(onCampusPool, ctx) {
-  const { getAvailability, consume, weeklyMinutes, daysWorkedSet, generatedRows, maxWeeklyMinutesByStudent, targetShiftMinutesByStudent, usedToday } = ctx;
+  const { getAvailability, consume, weeklyMinutes, daysWorkedSet, generatedRows, maxWeeklyMinutesByStudent, usedToday } = ctx;
   let picked = 0;
   while (picked < MONDAY_OVERFILL_CAP) {
     let best = null;
@@ -388,8 +380,7 @@ function fillMondayOverfillBonus(onCampusPool, ctx) {
       const currentMinutes = weeklyMinutes.get(student.name) || 0;
       const remainingBudget = weeklyCap - currentMinutes;
       if (remainingBudget <= 0) continue;
-      const targetShift = targetShiftMinutesByStudent.get(student.name) ?? FULL_DAY_WORKED_MINUTES;
-      const pickBudget = Math.min(remainingBudget, targetShift);
+      const pickBudget = remainingBudget;
       for (const iv of getAvailability(student)) {
         const overlap = intersect(iv, MONDAY_OVERFILL_WINDOW);
         if (!overlap) continue;
@@ -507,9 +498,6 @@ function generateWeeklySchedule({ students, classRows, timeOffRows, manualRows, 
   const weeklyMinutes = new Map();
   const daysWorkedSet = new Map();
   const maxWeeklyMinutesByStudent = new Map(students.map((s) => [s.name, resolveMaxWeeklyMinutes(s.maxHours)]));
-  const targetShiftMinutesByStudent = new Map(
-    students.map((s) => [s.name, resolveTargetShiftMinutes(maxWeeklyMinutesByStudent.get(s.name))])
-  );
 
   // Manual rows count against the same weekly cap / day-worked tie-break,
   // same as LITS/PMO, even though the generator didn't create them.
@@ -588,7 +576,7 @@ function generateWeeklySchedule({ students, classRows, timeOffRows, manualRows, 
     });
 
     perDay.set(day, {
-      ctx: { day, getAvailability, consume, weeklyMinutes, daysWorkedSet, generatedRows, maxWeeklyMinutesByStudent, targetShiftMinutesByStudent, usedToday },
+      ctx: { day, getAvailability, consume, weeklyMinutes, daysWorkedSet, generatedRows, maxWeeklyMinutesByStudent, usedToday },
       seatInstances,
       getAvailability,
     });
