@@ -1,6 +1,7 @@
 const express = require('express');
 const { getRows, addRow, addRows, updateRow, deleteRows } = require('../smartsheetClient');
-const { generateWeeklySchedule, formatMinutesToTime } = require('../scheduler');
+const { generateWeeklySchedule, formatMinutesToTime, filterValidExistingRows } = require('../scheduler');
+const { buildSeatsFromRows } = require('../seatsConfig');
 
 const router = express.Router();
 
@@ -23,22 +24,30 @@ router.get('/', async (req, res) => {
   }
 });
 
-// POST /api/work-schedule/generate -> run the scheduler and replace this
-// semester's Generated rows. Existing Manual rows are never touched, UNLESS
-// `overrideManual: true` is passed - same mechanism as PMO/LITS.
+// POST /api/work-schedule/generate -> run the scheduler. Existing Manual
+// rows are never touched, UNLESS `overrideManual: true` is passed - same
+// mechanism as PMO/LITS. Existing GENERATED rows are frozen (kept exactly
+// as-is) when they're still valid, and only re-filled when something
+// actually invalidates them (student left, new conflicting time off/class,
+// seat retired) or a new student needs a slot - added 2026-10-27, so
+// adding one new hire mid-semester doesn't reshuffle everyone else's
+// already-settled shifts. Pass `fullRegenerate: true` to skip this and
+// rebuild every Generated row from scratch instead, as an explicit escape
+// hatch if something looks wrong and a manager wants a clean rebuild.
 router.post('/generate', async (req, res) => {
   try {
-    const { semester, overrideManual } = req.body;
+    const { semester, overrideManual, fullRegenerate } = req.body;
     const asOfDate = req.body.asOfDate || todayIso();
     if (!semester) {
       return res.status(400).json({ error: 'semester is required.' });
     }
 
-    const [studentRows, classRows, timeOffRows, workScheduleRows] = await Promise.all([
+    const [studentRows, classRows, timeOffRows, workScheduleRows, seatRows] = await Promise.all([
       getRows(process.env.STUDENT_MASTER_SHEET_ID),
       getRows(process.env.CLASS_SCHEDULE_SHEET_ID),
       getRows(process.env.TIME_OFF_SHEET_ID),
       getRows(process.env.WORK_SCHEDULE_SHEET_ID),
+      getRows(process.env.SEATS_CONFIG_SHEET_ID),
     ]);
 
     const students = studentRows
@@ -51,19 +60,41 @@ router.post('/generate', async (req, res) => {
       }))
       .filter((student) => student.name);
 
+    const { seats, warnings: seatWarnings } = buildSeatsFromRows(seatRows);
+
     const existingForSemester = workScheduleRows.filter((row) => row['Semester'] === semester);
     const manualRows = overrideManual ? [] : existingForSemester.filter((row) => row['Source'] === 'Manual');
-    const staleRows = overrideManual
-      ? existingForSemester
-      : existingForSemester.filter((row) => row['Source'] === 'Generated');
+    const existingGeneratedRows = existingForSemester.filter((row) => row['Source'] === 'Generated');
 
-    const { generatedRows, gaps, warnings } = generateWeeklySchedule({
+    // Freeze whichever existing Generated rows are still valid (unless the
+    // manager explicitly asked for a full rebuild) - they get passed to
+    // the scheduler exactly like Manual rows (already-occupied time it
+    // must plan around, not re-pick), and are neither deleted nor re-added
+    // below, since they're already sitting in Smartsheet untouched.
+    let frozenGeneratedRows = [];
+    let staleGeneratedRows = existingGeneratedRows;
+    if (!overrideManual && !fullRegenerate) {
+      const { valid, invalid } = filterValidExistingRows(existingGeneratedRows, {
+        students,
+        classRows,
+        timeOffRows,
+        seats,
+        asOfDate,
+      });
+      frozenGeneratedRows = valid;
+      staleGeneratedRows = invalid;
+    }
+    const staleRows = overrideManual ? existingForSemester : staleGeneratedRows;
+
+    const { generatedRows, gaps, warnings: fillWarnings } = generateWeeklySchedule({
       students,
       classRows,
       timeOffRows,
-      manualRows,
+      manualRows: [...manualRows, ...frozenGeneratedRows],
       asOfDate,
+      seats,
     });
+    const warnings = [...seatWarnings, ...fillWarnings];
 
     const lastUpdated = todayIso();
     const newFieldRows = generatedRows.map((row) => ({
@@ -87,7 +118,9 @@ router.post('/generate', async (req, res) => {
     res.json({
       added: newFieldRows.length,
       removed: staleRows.length,
+      kept: frozenGeneratedRows.length,
       overrodeManual: Boolean(overrideManual),
+      fullRegenerate: Boolean(fullRegenerate),
       gaps: gaps.map((gap) => ({
         day: gap.day,
         location: gap.location,

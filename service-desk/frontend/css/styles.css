@@ -1,19 +1,21 @@
 :root {
-  /* Teal-blue brand palette (swapped from the PMO-inherited navy 2026-09-17,
-     per request). Neutrals below are hue-biased toward this teal rather
-     than pure grey, so they read as chosen, not just left at defaults. */
-  --brand: #0e7490;
-  --brand-dark: #0b4f60;
-  --brand-light: #e6f4f7;
-  --brand-pale: #a9dbe6;
+  /* Dark forest green brand palette (changed 2026-10-22, replacing a
+     same-day indigo/violet attempt that didn't land - give Service Desk
+     its own visual identity rather than looking like a reskin of LITS's
+     teal-blue). Neutrals below are hue-biased toward green rather than
+     pure grey, so they read as chosen, not just left at defaults. */
+  --brand: #15803d;
+  --brand-dark: #14532d;
+  --brand-light: #dcf3e2;
+  --brand-pale: #a8ddb8;
   --danger: #dc2626;
   --danger-light: #fdecea;
   --success: #16a34a;
   --success-light: #e6f4ea;
-  --border: #c7d7da;
-  --bg: #f5f9fa;
-  --text: #142b30;
-  --text-muted: #4d6b72;
+  --border: #d4ded4;
+  --bg: #f5f9f5;
+  --text: #1c2e1f;
+  --text-muted: #55685a;
   --font-heading: Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', serif;
   --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 }
@@ -22,10 +24,10 @@
 
 body {
   font-family: var(--font-body);
-  /* Soft teal gradient wash instead of a flat --bg fill - this is what a
+  /* Soft green gradient wash instead of a flat --bg fill - this is what a
      glass card (below) is actually floating over; a glass effect on a flat
      background reads as nothing. */
-  background: linear-gradient(160deg, #eaf7f9 0%, #dcedf1 45%, #eef3ee 100%);
+  background: linear-gradient(160deg, #eef6ee 0%, #e2eee3 45%, #f0f6ef 100%);
   background-attachment: fixed;
   color: var(--text);
   margin: 0;

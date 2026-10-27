@@ -2,32 +2,92 @@
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const DAY_LABEL = { Monday: 'Mon', Tuesday: 'Tue', Wednesday: 'Wed', Thursday: 'Thu', Friday: 'Fri', Saturday: 'Sat', Sunday: 'Sun' };
-const LOCATIONS = ['M-Th Remote', 'Friday Remote', 'Saturday', 'Sunday', 'Acad 700', 'S817'];
-// Which days each seat actually operates on - everything else is an N/A
-// cell, not an uncovered gap. Mirrors SEATS' `days` in the backend
-// scheduler - keep these two in sync if the seat list ever changes.
-const SEAT_DAYS = {
-  'M-Th Remote': ['Monday', 'Tuesday', 'Wednesday', 'Thursday'],
-  'Friday Remote': ['Friday'],
-  Saturday: ['Saturday'],
-  Sunday: ['Sunday'],
-  'Acad 700': ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
-  S817: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
+
+// Seats are no longer hardcoded here (changed 2026-10-27) - LOCATIONS,
+// SEAT_DAYS, SEAT_HOURS, and which calendar row each seat belongs to all
+// come from GET /api/seats now, which reads the live "Seats Configuration"
+// Smartsheet. This is what lets a manager add/retire a location without a
+// code change. See loadSeats() below. The calendar table itself still has
+// exactly 2 fixed rows (Remote / In Person, in manager.html) - a seat just
+// slots into whichever one its Pool maps to.
+let currentSeats = []; // [{location, days, pool, mandatory, category, hours}] - populated by loadSeats()
+
+function seatsByCategory(categoryName) {
+  return currentSeats.filter((s) => s.category === categoryName);
+}
+
+function seatInfo(location) {
+  return currentSeats.find((s) => s.location === location);
+}
+
+async function loadSeats() {
+  try {
+    const data = await api.getSeats();
+    currentSeats = data.seats;
+    if (data.warnings && data.warnings.length) {
+      console.warn('Seats Configuration warnings:', data.warnings);
+    }
+  } catch (err) {
+    appAlert(`Could not load seat configuration: ${err.message}`);
+    currentSeats = [];
+  }
+}
+
+// Deterministic name -> palette color, shared by colorForSeat/colorForStudent
+// so the same name always gets the same color without storing a mapping
+// anywhere. Separate palettes so seat colors and person colors never look
+// like the same kind of label.
+function hashToIndex(name, length) {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = (hash * 31 + name.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash) % length;
+}
+
+// Known seats keep these exact hand-picked colors (unchanged look from
+// 2026-10-22); any new seat added later gets one from SEAT_PALETTE instead,
+// via colorForSeat() below - no code change needed when a seat is added.
+const SEAT_COLORS = {
+  'M-Th Remote': '#15803d',
+  'Friday Remote': '#0e7490',
+  Saturday: '#b45309',
+  Sunday: '#be185d',
+  'Acad 700': '#1d4ed8',
+  S817: '#7e22ce',
 };
-const SEAT_HOURS = {
-  'M-Th Remote': '6-10pm',
-  'Friday Remote': '3:30-7:30pm',
-  Saturday: '10am-7:30pm',
-  Sunday: '7:30am-7:30pm',
-  'Acad 700': '7:30am-5pm',
-  S817: '7:30am-5pm',
-};
-// The calendar table shows 2 rows (Remote / In Person), not one per seat -
-// each cell groups its seats' chips under a small seat label instead.
-const CATEGORIES = [
-  { name: 'Remote', seats: ['M-Th Remote', 'Friday Remote'] },
-  { name: 'In Person', seats: ['Saturday', 'Sunday', 'Acad 700', 'S817'] },
+const SEAT_PALETTE = ['#be123c', '#4d7c0f', '#0369a1', '#a21caf', '#b45309', '#0f766e', '#15803d', '#7e22ce'];
+
+function colorForSeat(name) {
+  return SEAT_COLORS[name] || SEAT_PALETTE[hashToIndex(name, SEAT_PALETTE.length)];
+}
+
+// Pale tint of a seat's color, computed on the fly (not hand-picked) so it
+// works for any seat, known or new. Used as a generated chip's own
+// background (not just its border) so the seat coding reads at a glance.
+// Manual-override chips keep their amber background instead (see
+// renderChip) - that's still the "manual" signal.
+function lightenColor(hex, amount = 0.82) {
+  const n = parseInt(hex.slice(1), 16);
+  const mix = (c) => Math.round(c + (255 - c) * amount);
+  return `rgb(${mix((n >> 16) & 255)}, ${mix((n >> 8) & 255)}, ${mix(n & 255)})`;
+}
+
+// Per-person color coding - a fixed palette, deterministically assigned by
+// name so the same student always gets the same color across the whole
+// dashboard (calendar chips, weekly hours, class schedule) without needing
+// a stored mapping anywhere. Distinct from SEAT_COLORS/SEAT_PALETTE on
+// purpose - a chip's left border says "which seat", the dot next to the
+// name says "which person".
+const PERSON_PALETTE = [
+  '#dc2626', '#ea580c', '#d97706', '#65a30d', '#059669',
+  '#0891b2', '#2563eb', '#7c3aed', '#c026d3', '#db2777',
+  '#4f46e5', '#0d9488',
 ];
+
+function colorForStudent(name) {
+  return PERSON_PALETTE[hashToIndex(name, PERSON_PALETTE.length)];
+}
 
 let currentWorkScheduleRows = [];
 let currentRoster = []; // [{name, role, active, maxHours, floater, extension, phone}] - populated by loadRoster()
@@ -112,12 +172,23 @@ async function loadRoster() {
 }
 
 // --- Calendar ---
+// Chips are color-coded three ways at once: the left border AND the
+// background tint are the seat's color (colorForSeat/lightenColor),
+// the dot next to the name is that student's color (colorForStudent).
+// Manual-override chips keep their plain amber background (from
+// .chip-manual) instead of the seat tint - that's still the sole "this
+// was hand-edited" signal - but keep the seat-colored border either way.
 function renderChip(row) {
   const isManual = row['Source'] === 'Manual';
+  const seatColor = colorForSeat(row['Location'] || '');
+  const seatTint = lightenColor(seatColor);
+  const personColor = colorForStudent(row['Student Name'] || '');
   const chip = document.createElement('div');
   chip.className = `chip${isManual ? ' chip-manual' : ''}`;
+  chip.style.borderLeftColor = seatColor;
+  if (!isManual) chip.style.background = seatTint; // manual keeps its amber bg instead - see note above
   chip.innerHTML = `
-    <div class="chip-name">${row['Student Name'] || ''}</div>
+    <div class="chip-name"><span class="person-dot" style="background:${personColor}"></span>${row['Student Name'] || ''}</div>
     <div class="chip-time">${row['Start Time'] || ''} - ${row['End Time'] || ''}</div>
     ${row['Notes'] ? `<div class="chip-reason">${row['Notes']}</div>` : ''}
     <div class="chip-actions">
@@ -134,11 +205,14 @@ function renderChip(row) {
 
 // One cell can hold more than one seat (e.g. Monday's "In Person" cell has
 // both Acad 700 and S817) - each seat gets its own labeled sub-group of
-// chips so it's still clear which seat a student's shift is at.
+// chips, tagged with that seat's color via a small square swatch, so it's
+// still clear which seat a student's shift is at.
 function renderSeatGroup(seat, day) {
   const group = document.createElement('div');
   group.className = 'seat-group';
-  group.innerHTML = `<div class="seat-group-label">${seat}<span class="hint">${SEAT_HOURS[seat] || ''}</span></div>`;
+  const seatColor = colorForSeat(seat);
+  const hours = (seatInfo(seat) || {}).hours || '';
+  group.innerHTML = `<div class="seat-group-label"><span class="seat-swatch" style="background:${seatColor}"></span>${seat}<span class="hint">${hours}</span></div>`;
   const rows = currentWorkScheduleRows
     .filter((r) => r['Location'] === seat && r['Day'] === day)
     .sort((a, b) => (parseTimeMinutes(a['Start Time']) || 0) - (parseTimeMinutes(b['Start Time']) || 0));
@@ -156,13 +230,16 @@ async function loadCalendar() {
     return;
   }
 
-  CATEGORIES.forEach((category) => {
-    const rowEl = document.querySelector(`#calendar-table tr[data-category="${category.name}"]`);
+  ['Remote', 'In Person'].forEach((categoryName) => {
+    const rowEl = document.querySelector(`#calendar-table tr[data-category="${categoryName}"]`);
+    const categorySeats = seatsByCategory(categoryName);
     DAYS.forEach((day) => {
       const cell = rowEl.querySelector(`td[data-day="${day}"]`);
-      const seatsToday = category.seats.filter((seat) => SEAT_DAYS[seat].includes(day));
-      if (seatsToday.length === 0) return; // N/A cell, already styled in HTML
+      const seatsToday = categorySeats.filter((s) => s.days.includes(day)).map((s) => s.location);
       cell.innerHTML = '';
+      // N/A styling is set here, not static in the HTML - a category's
+      // N/A days can change as seats are added/retired through the sheet.
+      cell.classList.toggle('cell-na', seatsToday.length === 0);
       seatsToday.forEach((seat) => cell.appendChild(renderSeatGroup(seat, day)));
     });
   });
@@ -171,11 +248,34 @@ async function loadCalendar() {
   renderStatCards();
 }
 
+// Builds the seat-color legend above the calendar from currentSeats itself,
+// so it can never drift out of sync with the actual swatches used, and
+// automatically picks up any seat added/retired through the sheet.
+function renderSeatLegend() {
+  const el = document.getElementById('seat-legend');
+  if (!el) return;
+  el.innerHTML = currentSeats
+    .map((s) => `<span class="seat-legend-item"><span class="seat-swatch" style="background:${colorForSeat(s.location)}"></span>${s.location}</span>`)
+    .join('');
+}
+
 // --- Copy for Excel ---
 // Grid layout (students as columns, days as rows), same idea as LITS/PMO's
 // export. One box covering everyone, same reasoning as LITS (no clean
 // two-way split here either).
-const LOCATION_MARKER = { 'M-Th Remote': 'MR', 'Friday Remote': 'FR', Saturday: 'SA', Sunday: 'SU', 'Acad 700': 'A7', S817: 'S8' };
+// Known seats keep these exact 2-letter markers (unchanged from before);
+// any new seat gets one auto-derived from its name instead (initials of
+// each word, e.g. "New Front Desk" -> "NFD", or first 2 letters of a
+// single-word name) - no code change needed when a seat is added.
+const KNOWN_LOCATION_MARKERS = { 'M-Th Remote': 'MR', 'Friday Remote': 'FR', Saturday: 'SA', Sunday: 'SU', 'Acad 700': 'A7', S817: 'S8' };
+
+function markerForSeat(name) {
+  if (KNOWN_LOCATION_MARKERS[name]) return KNOWN_LOCATION_MARKERS[name];
+  const words = name.trim().split(/\s+/);
+  const marker = words.length > 1 ? words.map((w) => w[0]).join('') : name.slice(0, 2);
+  return marker.toUpperCase();
+}
+
 const EXPORT_FONT_STACK = "'Aptos','Segoe UI',Calibri,Arial,sans-serif";
 
 function compactTime(text) {
@@ -226,7 +326,7 @@ function buildScheduleTableHtml() {
     (byStudentDay.get(`${name}|${day}`) || [])
       .sort((a, b) => (parseTimeMinutes(a['Start Time']) || 0) - (parseTimeMinutes(b['Start Time']) || 0))
       .map((row) => {
-        const marker = LOCATION_MARKER[row['Location']] || '';
+        const marker = row['Location'] ? markerForSeat(row['Location']) : '';
         return `${compactTime(row['Start Time'])}-${compactTime(row['End Time'])}${marker ? ' ' + marker : ''}`;
       })
       .join('<br>');
@@ -246,7 +346,8 @@ function buildScheduleTableHtml() {
     .map((name) => `<td ${totalTd}>${(Math.round((totals.get(name) || 0) / 6) / 10).toFixed(1).replace(/\.0$/, '')}</td>`)
     .join('')}</tr>`;
 
-  const legendRow = `<tr><td colspan="${totalCols}" style="border:1px solid #999;padding:5px 10px;">MR = M-Th Remote&nbsp;&nbsp;&nbsp;FR = Friday Remote&nbsp;&nbsp;&nbsp;SA = Saturday&nbsp;&nbsp;&nbsp;SU = Sunday&nbsp;&nbsp;&nbsp;A7 = Acad 700&nbsp;&nbsp;&nbsp;S8 = S817</td></tr>`;
+  const legendText = currentSeats.map((s) => `${markerForSeat(s.location)} = ${s.location}`).join('&nbsp;&nbsp;&nbsp;');
+  const legendRow = `<tr><td colspan="${totalCols}" style="border:1px solid #999;padding:5px 10px;">${legendText}</td></tr>`;
   const updatedRow = `<tr><td colspan="${totalCols}" style="border:1px solid #999;padding:5px 10px;text-align:right;font-style:italic;">Last Updated: ${new Date().toLocaleDateString()}</td></tr>`;
 
   return `<table style="border-collapse:collapse;font-family:${EXPORT_FONT_STACK};font-size:11pt;">
@@ -319,7 +420,7 @@ function renderWeeklyHours() {
     const pct = Math.min(100, (minutes / (capHours * 60)) * 100);
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td>${name}</td>
+      <td><span class="person-dot" style="background:${colorForStudent(name)}"></span>${name}</td>
       <td>
         <div class="hours-bar-track"><div class="hours-bar-fill" style="width:${pct}%"></div></div>
         <span class="hours-bar-label">${hours} / ${capHours}</span>
@@ -340,7 +441,7 @@ async function loadClassScheduleView() {
     active.forEach((student) => {
       const tr = document.createElement('tr');
       const nameTd = document.createElement('td');
-      nameTd.innerHTML = `<strong>${student.name}</strong><br><span class="hint">${student.role}${student.floater ? ' (floater)' : ''}</span>`;
+      nameTd.innerHTML = `<strong><span class="person-dot" style="background:${colorForStudent(student.name)}"></span>${student.name}</strong><br><span class="hint">${student.role}${student.floater ? ' (floater)' : ''}</span>`;
       tr.appendChild(nameTd);
 
       DAYS.forEach((day) => {
@@ -380,9 +481,16 @@ async function handleGenerate() {
   }
 
   const overrideManual = document.getElementById('override-manual-checkbox').checked;
+  const fullRegenerate = document.getElementById('full-regenerate-checkbox').checked;
   if (overrideManual) {
     const proceed = await appConfirm(
       `⚠ This will delete every manual shift for ${semester} and rebuild the whole schedule from scratch - manual edits will NOT survive this run. Continue?`,
+      'warning'
+    );
+    if (!proceed) return;
+  } else if (fullRegenerate) {
+    const proceed = await appConfirm(
+      `⚠ This rebuilds every generated shift for ${semester} from scratch, instead of only filling in what's new or changed - everyone's schedule may shuffle, not just new students'. Continue?`,
       'warning'
     );
     if (!proceed) return;
@@ -395,11 +503,11 @@ async function handleGenerate() {
   showGapsBtn.textContent = 'View Uncovered Gaps';
 
   try {
-    const result = await api.generateSchedule(semester, asOfDate || undefined, overrideManual);
+    const result = await api.generateSchedule(semester, asOfDate || undefined, overrideManual, fullRegenerate);
     lastGaps = result.gaps;
     showStatus(
       statusEl,
-      `Added ${result.added} generated rows, removed ${result.removed} previous ${result.overrodeManual ? '' : 'generated '}rows.` +
+      `Kept ${result.kept} existing shifts, added ${result.added}, removed ${result.removed}.` +
         (result.warnings.length ? ` Warnings: ${result.warnings.join(' ')}` : ''),
       'success'
     );
@@ -610,7 +718,22 @@ document.getElementById('shift-cancel-btn').addEventListener('click', resetShift
 document.getElementById('asof-input').valueAsDate = new Date();
 fillSemesterSelect(document.getElementById('shift-semester'), document.getElementById('calendar-semester-input').value);
 
-loadRoster();
-loadCalendar();
-loadClassScheduleView();
-loadPendingTimeOff();
+// Options filled from GET /api/seats, not hardcoded - see the comment on
+// the <select> itself in manager.html.
+function fillShiftLocationSelect() {
+  const select = document.getElementById('shift-location');
+  select.innerHTML = currentSeats.map((s) => `<option value="${htmlEscape(s.location)}">${htmlEscape(s.location)}</option>`).join('');
+}
+
+// loadSeats() has to finish before renderSeatLegend/fillShiftLocationSelect
+// and the calendar render below, since all three now read currentSeats.
+async function init() {
+  await loadSeats();
+  renderSeatLegend();
+  fillShiftLocationSelect();
+  loadRoster();
+  loadCalendar();
+  loadClassScheduleView();
+  loadPendingTimeOff();
+}
+init();

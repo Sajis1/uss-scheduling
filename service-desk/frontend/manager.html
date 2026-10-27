@@ -41,10 +41,16 @@
     <section class="card">
       <h2>Generate Schedule</h2>
       <p class="hint">
-        Fills, in order: M-Th Remote, Friday Remote, Saturday, Sunday, Acad 700, S817 - the two
-        Remote seats are mandatory (a gap there is reported seriously); the four On-Campus seats
-        are opportunistic (fine to under-cover). On-Campus floaters back up Remote once its own
-        pool runs short. No split shifts - one continuous shift per student per day.
+        Seats and their hours/headcount come from the Seats Configuration sheet, not hardcoded -
+        add, retire, or change a seat there and Generate picks it up live. Mandatory vs.
+        opportunistic and fill priority (Remote Weekday &gt; Remote Weekend &gt; On Campus) are
+        set per seat on that sheet too. No split shifts - one continuous shift per student per day.
+      </p>
+      <p class="hint">
+        <strong>Re-running Generate only fills in what's actually new or changed</strong> - a
+        student's existing shift is kept as-is unless something genuinely invalidates it (they
+        left, a new conflicting class/time-off, their seat was retired). Adding one new student
+        mid-semester won't reshuffle everyone else's already-settled schedule.
       </p>
       <div class="field-grid">
         <div class="field">
@@ -61,8 +67,13 @@
       </p>
 
       <label class="checkbox-label">
+        <input id="full-regenerate-checkbox" type="checkbox" />
+        Regenerate the entire schedule from scratch (ignore existing generated shifts) - use this
+        if something looks wrong and you want a clean rebuild instead of an incremental update
+      </label>
+      <label class="checkbox-label">
         <input id="override-manual-checkbox" type="checkbox" />
-        Also overwrite manual edits (rebuilds the whole schedule from scratch)
+        Also overwrite manual edits
       </label>
 
       <button id="generate-btn" type="button">Generate Schedule</button>
@@ -81,6 +92,7 @@
         <span class="chip-legend chip-legend-manual">Manual override</span>
         &mdash; a red-flagged cell has more people assigned than that seat can physically hold at once.
       </p>
+      <div id="seat-legend" class="seat-legend" aria-label="Seat color legend"></div>
       <label for="calendar-semester-input">Viewing semester</label>
       <input id="calendar-semester-input" type="text" value="Fall 2026" />
       <button id="refresh-calendar-btn" type="button">Refresh</button>
@@ -109,13 +121,13 @@
             <td class="category-label category-remote">Remote</td>
             <td data-day="Monday"></td><td data-day="Tuesday"></td><td data-day="Wednesday"></td>
             <td data-day="Thursday"></td><td data-day="Friday"></td>
-            <td class="cell-na" data-day="Saturday"></td><td class="cell-na" data-day="Sunday"></td>
+            <td data-day="Saturday"></td><td data-day="Sunday"></td>
           </tr>
           <tr data-category="In Person">
             <td class="category-label category-inperson">In Person</td>
             <td data-day="Monday"></td><td data-day="Tuesday"></td><td data-day="Wednesday"></td>
             <td data-day="Thursday"></td><td data-day="Friday"></td>
-            <td data-day="Saturday"></td><td data-day="Sunday"></td>
+            <td class="cell-na" data-day="Saturday"></td><td class="cell-na" data-day="Sunday"></td>
           </tr>
         </tbody>
       </table>
@@ -140,14 +152,10 @@
           </div>
           <div class="field">
             <label for="shift-location">Seat</label>
-            <select id="shift-location" required>
-              <option>M-Th Remote</option>
-              <option>Friday Remote</option>
-              <option>Saturday</option>
-              <option>Sunday</option>
-              <option>Acad 700</option>
-              <option>S817</option>
-            </select>
+            <!-- Options filled in by fillShiftLocationSelect() in manager.js,
+                 from GET /api/seats - not hardcoded, so a new seat added
+                 through the sheet shows up here without a code change. -->
+            <select id="shift-location" required></select>
           </div>
         </div>
 

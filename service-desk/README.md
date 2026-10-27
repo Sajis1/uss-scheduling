@@ -43,8 +43,8 @@ frontend (HTML/CSS/JS) --> backend (Express) --> Smartsheet API
 
 - **[COVERAGE-POLICY.md](COVERAGE-POLICY.md)** — the scheduling rules, how
   the generator decides, and the open questions still worth confirming
-  (Monday-overfill's exact seat, the role-to-seat mapping for the 5
-  On-Campus seats).
+  (Monday-overfill's exact seat, the role-to-seat mapping for the 3
+  remaining On-Campus seats).
 - **[SMARTSHEET-COLUMNS.md](SMARTSHEET-COLUMNS.md)** — the column spec the
   code currently expects. The sheets themselves now exist, but the column
   names here are still unverified guesses pending a real screenshot check.
@@ -129,11 +129,10 @@ auto-deploy.
 - **Monday-overfill bonus pass** — confirmed to exist (bonus capacity,
   capped at 2 extra), but which physical seat it adds to was never named.
   Stubbed, not guessed at.
-- **Per-seat calendar colors** — deferred on purpose until this has run
-  against real data at least once, same order LITS actually followed.
-- **The role-to-seat mapping for the 5 On-Campus seats** (Saturday/Sunday/
-  Acad 700/Monday-overfill/S817 all being one pool, differentiated by fill
+- **The role-to-seat mapping for the 3 remaining On-Campus seats** (Acad
+  700/Monday-overfill/S817 all being one pool, differentiated by fill
   order) is this doc's best read of the notes, not confirmed
-  sentence-by-sentence.
+  sentence-by-sentence. (Saturday/Sunday were corrected out of this pool
+  and into `Remote Weekend` on 2026-10-27.)
 - No deployment, no real Smartsheet sheets, no git commit yet as of
   2026-10-13.

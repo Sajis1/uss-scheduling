@@ -14,9 +14,10 @@
 //
 // ASSUMPTIONS TO CONFIRM (also flagged in COVERAGE-POLICY.md's "Open
 // questions"):
-//   - The 5 On-Campus seats (Saturday/Sunday/Acad 700/Monday overfill/S817)
-//     are one combined role pool, differentiated only by their own fill
-//     order - never confirmed sentence-by-sentence.
+//   - The 3 On-Campus seats (Acad 700/Monday overfill/S817) are one
+//     combined role pool, differentiated only by their own fill order -
+//     never confirmed sentence-by-sentence. (Saturday/Sunday moved to the
+//     Remote Weekend pool 2026-10-27 - see their own SEATS comments.)
 //   - Monday overfill's exact seat is assumed to be Acad 700's own morning
 //     hours (the doc names a bonus capacity window, capped at 2 extra, but
 //     not which physical seat it adds to) - IMPLEMENTED on this assumption,
@@ -39,6 +40,7 @@
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const MIN_SHIFT_MINUTES = 240; // 4 hours - hard minimum, no exception
+const MAX_SHIFT_MINUTES = 480; // 8 hours - hard maximum per single shift, added 2026-10-27
 const WEEKLY_CAP_MINUTES = Math.round(19.75 * 60); // 1185 - confirmed a hard cap 2026-10-13, not a floor
 const CLASS_BUFFER_MINUTES = 30;
 const LUNCH_START = 720; // 12:00 PM
@@ -80,16 +82,22 @@ const SEATS = [
     segments: [{ start: 930, end: 1170, need: 2 }], // 3:30-7:30 PM
   },
   {
+    // Pool corrected 2026-10-27: Saturday/Sunday are remote work, not
+    // on-campus - an earlier misunderstanding during the original policy
+    // pass. Grouped under Remote Weekend (same role already covering
+    // Friday Remote) rather than a new role value. Still opportunistic
+    // (mandatory: false) - that status wasn't part of the correction, only
+    // which pool staffs it; revisit if that's wrong too.
     location: 'Saturday',
     days: ['Saturday'],
-    pool: ROLES.ON_CAMPUS,
-    mandatory: false, // opportunistic bucket - confirmed 2026-10-13
+    pool: ROLES.REMOTE_WEEKEND,
+    mandatory: false,
     segments: [{ start: 600, end: 1170, need: 2 }], // 10:00 AM-7:30 PM
   },
   {
     location: 'Sunday',
     days: ['Sunday'],
-    pool: ROLES.ON_CAMPUS,
+    pool: ROLES.REMOTE_WEEKEND, // corrected 2026-10-27, see Saturday's comment above
     mandatory: false,
     segments: [{ start: 450, end: 1170, need: 2 }], // 7:30 AM-7:30 PM
   },
@@ -170,11 +178,13 @@ function workedMinutesFor(interval) {
 
 // CHANGED 2026-10-21: unlike LITS, shifts are NOT capped to an even
 // "target length" per day here. 4 hours (MIN_SHIFT_MINUTES) is a strict
-// floor, not a ceiling - a student with a wide-open day and budget to
-// spare should get one long shift, not get artificially chopped down.
-// The only real ceiling is their own remaining weekly budget (enforced via
-// `pickBudget = remainingBudget` in fillSeatFromPool/fillMondayOverfillBonus
-// below), not a precomputed even-division length.
+// floor - a student with a wide-open day and budget to spare should get
+// one long shift, not get artificially chopped down to a precomputed
+// even-division length. The real ceilings are their remaining weekly
+// budget AND an explicit 8-hour-per-shift cap (MAX_SHIFT_MINUTES, added
+// 2026-10-27 - a normal full-workday policy, not the old target-length
+// bug), both enforced via `pickBudget = Math.min(remainingBudget,
+// MAX_SHIFT_MINUTES)` in fillSeatFromPool/fillMondayOverfillBonus below.
 
 function resolveMaxWeeklyMinutes(maxHours) {
   const hours = Number(maxHours);
@@ -225,6 +235,50 @@ function computeAvailability({ day, classRows, manualOccupied, unavailableAllDay
   return intervals;
 }
 
+// Validates a semester's existing "Generated" Work Schedule rows against
+// the CURRENT roster/class-schedule/time-off/seats, so a regenerate can
+// freeze (keep as-is) whichever ones are still legitimate instead of
+// rebuilding every student's schedule from scratch on every run. Added
+// 2026-10-27, confirmed with the user directly: "if someone joined mid sem
+// i dont want others to suffer" - adding one new hire (or one person's
+// time-off/class-schedule change) shouldn't reshuffle everyone else's
+// already-settled shifts.
+//
+// A row is still valid if: the student is still Active, the seat still
+// exists and is Active in Seats Configuration, and the student's current
+// availability for that day (recomputed from their CURRENT class schedule
+// + approved time off) still fully covers the row's exact start/end - i.e.
+// nothing new (a class, approved time off) has since come to conflict with
+// it. Anything else (student left, seat retired, a new conflict) is
+// invalid and goes back into the pool to be re-filled normally.
+function filterValidExistingRows(existingGeneratedRows, { students, classRows, timeOffRows, seats, asOfDate }) {
+  const activeNames = new Set(students.map((s) => s.name));
+  const activeLocations = new Set(seats.map((s) => s.location));
+  const unavailableStudents = computeUnavailableStudents(timeOffRows, asOfDate);
+  const valid = [];
+  const invalid = [];
+  for (const row of existingGeneratedRows) {
+    const name = row['Student Name'];
+    const day = row['Day'];
+    const location = row['Location'];
+    const start = parseTimeToMinutes(row['Start Time']);
+    const end = parseTimeToMinutes(row['End Time']);
+    if (!activeNames.has(name) || !activeLocations.has(location) || start == null || end == null) {
+      invalid.push(row);
+      continue;
+    }
+    const availability = computeAvailability({
+      day,
+      classRows: classRows.filter((r) => r['Student Name'] === name),
+      manualOccupied: [],
+      unavailableAllDay: unavailableStudents.has(name),
+    });
+    const stillFits = availability.some((iv) => iv.start <= start && iv.end >= end);
+    (stillFits ? valid : invalid).push(row);
+  }
+  return { valid, invalid };
+}
+
 // Splits a need-segment at [cutStart, cutEnd] and decrements its `need` by
 // `amount` over that overlap - the multi-headcount generalization of
 // LITS/PMO's plain subtractInterval (which only ever tracked "covered or
@@ -250,11 +304,44 @@ function decrementNeed(segments, cutStart, cutEnd, amount) {
 // Full, gap-free coverage of the current need-segment beats everything -
 // same scoring philosophy as LITS/PMO, generalized: a candidate who closes
 // the ENTIRE remaining segment in one pick wins outright, even over someone
-// who's worked fewer days so far. Short of that, fewer-days-worked is the
-// tie-break, then raw overlap length.
-function candidateScore(overlapMinutes, daysWorkedSoFar, closesSegmentFully) {
+// who's worked fewer days so far. Next, a candidate who's already worked
+// THIS seat earlier in the week (alreadyAtThisSeat, added 2026-10-27 on
+// request - "keep schedule consistent so they're in one place, not all
+// over") beats one who hasn't, even over the existing fewer-days-worked
+// fairness tie-break - deliberately: once someone's settled at a seat,
+// keep them there across their other days rather than scattering them
+// across different seats within the same week. Short of that,
+// fewer-days-worked is the tie-break, then raw overlap length.
+function candidateScore(overlapMinutes, daysWorkedSoFar, closesSegmentFully, alreadyAtThisSeat) {
   const closureBonus = closesSegmentFully ? 100000000 : 0;
-  return closureBonus - daysWorkedSoFar * 100000 + overlapMinutes;
+  const consistencyBonus = alreadyAtThisSeat ? 2000000 : 0;
+  return closureBonus + consistencyBonus - daysWorkedSoFar * 100000 + overlapMinutes;
+}
+
+// Within one day, seats sharing the same pool take turns going first
+// (added 2026-10-27, on request). Without this, Acad 700 always won the
+// shared On-Campus pool over S817 - not because it's more important, just
+// because it's listed first on the Seats Configuration sheet, every
+// single day - so S817 almost never got a real shot and Acad 700 was
+// fully staffed every day with nothing left over. Seats from DIFFERENT
+// pools keep their original relative order; only seats sharing the same
+// pool (and so actually competing for the same people) rotate who goes
+// first, by day index, so the "always-first" seat doesn't dominate.
+function rotateSamePoolPriority(todaysSeats, dayIndex) {
+  const byPool = new Map();
+  todaysSeats.forEach((seat) => {
+    if (!byPool.has(seat.pool)) byPool.set(seat.pool, []);
+    byPool.get(seat.pool).push(seat);
+  });
+  const result = [];
+  todaysSeats.forEach((seat) => {
+    if (!byPool.has(seat.pool)) return; // this pool's group was already placed
+    const group = byPool.get(seat.pool);
+    byPool.delete(seat.pool);
+    const offset = dayIndex % group.length;
+    result.push(...group.slice(offset), ...group.slice(0, offset));
+  });
+  return result;
 }
 
 function budgetCappedEnd(overlap, remainingBudget) {
@@ -272,7 +359,7 @@ function budgetCappedEnd(overlap, remainingBudget) {
 // function (kept here only for the per-student weekly-cap/target-shift
 // bookkeeping, same shape as LITS's fillSeatFromPool).
 function fillSeatFromPool(seatInstance, pool, ctx, forcedReason) {
-  const { day, getAvailability, consume, weeklyMinutes, daysWorkedSet, generatedRows, maxWeeklyMinutesByStudent, usedToday } = ctx;
+  const { day, getAvailability, consume, weeklyMinutes, daysWorkedSet, seatsWorkedByStudent, generatedRows, maxWeeklyMinutesByStudent, usedToday } = ctx;
   let progressed = true;
   while (progressed) {
     progressed = false;
@@ -297,7 +384,7 @@ function fillSeatFromPool(seatInstance, pool, ctx, forcedReason) {
         const weeklyCap = maxWeeklyMinutesByStudent.get(student.name) ?? WEEKLY_CAP_MINUTES;
         const remainingBudget = weeklyCap - (weeklyMinutes.get(student.name) || 0);
         if (remainingBudget <= 0) continue;
-        const pickBudget = remainingBudget;
+        const pickBudget = Math.min(remainingBudget, MAX_SHIFT_MINUTES);
         for (const iv of getAvailability(student)) {
           const spanOverlap = intersect(iv, seatInstance.fullSpan);
           if (!spanOverlap) continue;
@@ -320,7 +407,8 @@ function fillSeatFromPool(seatInstance, pool, ctx, forcedReason) {
             if (overlapMinutes < MIN_SHIFT_MINUTES) continue; // 4-hour hard minimum, no exception
             const closesTargetFully = interval.start <= target.start && interval.end >= target.end;
             const daysWorkedSoFar = (daysWorkedSet.get(student.name) || new Set()).size;
-            const score = candidateScore(overlapMinutes, daysWorkedSoFar, closesTargetFully);
+            const alreadyAtThisSeat = (seatsWorkedByStudent.get(student.name) || new Set()).has(seatInstance.location);
+            const score = candidateScore(overlapMinutes, daysWorkedSoFar, closesTargetFully, alreadyAtThisSeat);
             if (score > bestScore) {
               bestScore = score;
               best = { student, interval };
@@ -343,6 +431,8 @@ function fillSeatFromPool(seatInstance, pool, ctx, forcedReason) {
         usedToday.add(best.student.name); // no split shifts - done for the whole day once picked
         if (!daysWorkedSet.has(best.student.name)) daysWorkedSet.set(best.student.name, new Set());
         daysWorkedSet.get(best.student.name).add(day);
+        if (!seatsWorkedByStudent.has(best.student.name)) seatsWorkedByStudent.set(best.student.name, new Set());
+        seatsWorkedByStudent.get(best.student.name).add(seatInstance.location);
         weeklyMinutes.set(best.student.name, (weeklyMinutes.get(best.student.name) || 0) + workedMinutes);
         seatInstance.segments = decrementNeed(seatInstance.segments, best.interval.start, best.interval.end, 1);
         progressed = true;
@@ -369,7 +459,7 @@ const MONDAY_OVERFILL_WINDOW = { start: 450, end: 720 }; // 7:30 AM-12:00 PM
 const MONDAY_OVERFILL_CAP = 2;
 
 function fillMondayOverfillBonus(onCampusPool, ctx) {
-  const { getAvailability, consume, weeklyMinutes, daysWorkedSet, generatedRows, maxWeeklyMinutesByStudent, usedToday } = ctx;
+  const { getAvailability, consume, weeklyMinutes, daysWorkedSet, seatsWorkedByStudent, generatedRows, maxWeeklyMinutesByStudent, usedToday } = ctx;
   let picked = 0;
   while (picked < MONDAY_OVERFILL_CAP) {
     let best = null;
@@ -380,7 +470,7 @@ function fillMondayOverfillBonus(onCampusPool, ctx) {
       const currentMinutes = weeklyMinutes.get(student.name) || 0;
       const remainingBudget = weeklyCap - currentMinutes;
       if (remainingBudget <= 0) continue;
-      const pickBudget = remainingBudget;
+      const pickBudget = Math.min(remainingBudget, MAX_SHIFT_MINUTES);
       for (const iv of getAvailability(student)) {
         const overlap = intersect(iv, MONDAY_OVERFILL_WINDOW);
         if (!overlap) continue;
@@ -407,6 +497,8 @@ function fillMondayOverfillBonus(onCampusPool, ctx) {
     usedToday.add(best.student.name);
     if (!daysWorkedSet.has(best.student.name)) daysWorkedSet.set(best.student.name, new Set());
     daysWorkedSet.get(best.student.name).add('Monday');
+    if (!seatsWorkedByStudent.has(best.student.name)) seatsWorkedByStudent.set(best.student.name, new Set());
+    seatsWorkedByStudent.get(best.student.name).add(MONDAY_OVERFILL_LOCATION);
     weeklyMinutes.set(best.student.name, (weeklyMinutes.get(best.student.name) || 0) + workedMinutesFor(best.interval));
     picked += 1;
   }
@@ -473,7 +565,11 @@ function mergeAdjacentRows(rows) {
 //   exhausted. false means strictly locked to their own Role's seats only,
 //   regardless of Role.
 //   Caller is expected to have already filtered to Active students.
-function generateWeeklySchedule({ students, classRows, timeOffRows, manualRows, asOfDate }) {
+// seats: defaults to the hardcoded SEATS above, but the caller (routes/
+// workSchedule.js) now passes in seats built live from the "Seats
+// Configuration" Smartsheet instead - see buildSeatsFromRows there. The
+// default only exists for direct/manual testing of this module.
+function generateWeeklySchedule({ students, classRows, timeOffRows, manualRows, asOfDate, seats = SEATS }) {
   const unavailableStudents = computeUnavailableStudents(timeOffRows, asOfDate);
 
   const knownRoles = new Set(Object.values(ROLES));
@@ -497,6 +593,7 @@ function generateWeeklySchedule({ students, classRows, timeOffRows, manualRows, 
 
   const weeklyMinutes = new Map();
   const daysWorkedSet = new Map();
+  const seatsWorkedByStudent = new Map(); // name -> Set of seat locations worked this week - drives the "stay at the same seat" scoring bonus
   const maxWeeklyMinutesByStudent = new Map(students.map((s) => [s.name, resolveMaxWeeklyMinutes(s.maxHours)]));
 
   // Manual rows count against the same weekly cap / day-worked tie-break,
@@ -560,7 +657,7 @@ function generateWeeklySchedule({ students, classRows, timeOffRows, manualRows, 
       availability.set(student.name, subtractInterval(getAvailability(student), block));
     };
 
-    const seatInstances = SEATS.filter((seat) => seat.days.includes(day)).map((seat) => {
+    const seatInstances = seats.filter((seat) => seat.days.includes(day)).map((seat) => {
       const manual = manualBySeatDay.get(`${seat.location}|${day}`) || [];
       let segments = seat.segments.map((s) => ({ ...s }));
       for (const block of manual) segments = decrementNeed(segments, block.start, block.end, Infinity);
@@ -576,32 +673,73 @@ function generateWeeklySchedule({ students, classRows, timeOffRows, manualRows, 
     });
 
     perDay.set(day, {
-      ctx: { day, getAvailability, consume, weeklyMinutes, daysWorkedSet, generatedRows, maxWeeklyMinutesByStudent, usedToday },
+      ctx: { day, getAvailability, consume, weeklyMinutes, daysWorkedSet, seatsWorkedByStudent, generatedRows, maxWeeklyMinutesByStudent, usedToday },
       seatInstances,
       getAvailability,
     });
   }
 
-  // Fill order: every seat's whole week before the next seat starts (same
-  // week-wide-not-per-day principle as LITS/PMO), in the confirmed
-  // fill-priority order the SEATS array is already written in.
-  for (const seat of SEATS) {
-    const pool = seat.pool === ROLES.REMOTE_WEEKDAY ? remoteWeekday : seat.pool === ROLES.REMOTE_WEEKEND ? remoteWeekend : onCampus;
-    for (const day of seat.days) {
-      const { ctx, seatInstances } = perDay.get(day);
+  // Fill order: CHANGED 2026-10-27 from "every seat's whole week before the
+  // next seat starts" to day-first for PRIMARY fill - every seat that
+  // operates on a given day gets its own Role pool tried (in the seats
+  // parameter's own priority order) before moving to the next day. The old
+  // week-major order let an earlier seat consume everyone's weekly budget
+  // across its entire week before a later seat sharing the same pool ever
+  // got a turn - concretely, Acad 700 (processed Mon-Fri before S817
+  // started) was absorbing students' whole weekly budget, leaving S817
+  // with nothing. Day-major gives same-pool seats that share days (like
+  // Acad 700/S817) an even shot at each day's candidates instead. This is
+  // a no-op for seats that don't share both a pool and a day with anything
+  // else (e.g. the 4 Remote seats, whose days are all disjoint from each
+  // other) - only Acad 700/S817 are actually affected by this part.
+  for (const day of WEEKDAYS) {
+    const { ctx, seatInstances } = perDay.get(day);
+    const todaysSeats = rotateSamePoolPriority(
+      seats.filter((seat) => seat.days.includes(day)),
+      WEEKDAYS.indexOf(day)
+    );
+    for (const seat of todaysSeats) {
+      const pool = seat.pool === ROLES.REMOTE_WEEKDAY ? remoteWeekday : seat.pool === ROLES.REMOTE_WEEKEND ? remoteWeekend : onCampus;
       const instance = seatInstances.find((s) => s.location === seat.location);
       fillSeatFromPool(instance, pool, ctx);
     }
-    // Floater backup: universal across every seat (changed 2026-10-14) -
-    // after a seat's own Role pool is exhausted, anyone flagged Floater is
-    // tried next regardless of their own Role, before a gap is reported.
-    // Excludes students already in this seat's own pool (already tried
-    // above); usedToday prevents double-booking either way.
-    const backupPool = floaters.filter((s) => s.role !== seat.pool);
-    for (const day of seat.days) {
+  }
+
+  // Floater backup: a SEPARATE pass across the whole week, run only after
+  // EVERY seat's own primary pool has had its full week's turn above - not
+  // interleaved day-by-day with primary fill. Found 2026-10-27: when
+  // backup ran right alongside each day's primary fill, a floater whose
+  // OWN seat falls later in the week (e.g. Friday Remote/Saturday/Sunday
+  // for the Remote Weekend pool) could get pulled into backing up an
+  // earlier seat (Acad 700/S817/M-Th Remote, all Monday-Thursday) before
+  // their own seat was ever attempted - genuinely exhausting their weekly
+  // budget on someone else's seat first. Running backup only after every
+  // primary pool's full week is done means a floater's own seat always
+  // gets first claim on their budget.
+  //
+  // Within this pass, backup competes across pools too, so it's ordered by
+  // explicit priority (Remote Weekday > Remote Weekend > On Campus,
+  // confirmed 2026-10-27) rather than by calendar day - otherwise a lower-
+  // priority seat on an early weekday (e.g. Acad 700, On Campus, Monday)
+  // could claim floater capacity before a higher-priority seat later in
+  // the week (e.g. M-Th Remote, Remote Weekday, Thursday) ever got a turn,
+  // purely because Monday comes before Thursday. Day-major ordering is
+  // kept WITHIN each pool tier, since that's what gives same-pool seats
+  // sharing days (Acad 700/S817, both On Campus) an even shot at each
+  // other - see the primary-fill comment above.
+  const POOL_PRIORITY = [ROLES.REMOTE_WEEKDAY, ROLES.REMOTE_WEEKEND, ROLES.ON_CAMPUS];
+  for (const poolTier of POOL_PRIORITY) {
+    for (const day of WEEKDAYS) {
       const { ctx, seatInstances } = perDay.get(day);
-      const instance = seatInstances.find((s) => s.location === seat.location);
-      fillSeatFromPool(instance, backupPool, ctx, 'floater backup');
+      const todaysSeatsInTier = rotateSamePoolPriority(
+        seats.filter((seat) => seat.days.includes(day) && seat.pool === poolTier),
+        WEEKDAYS.indexOf(day)
+      );
+      for (const seat of todaysSeatsInTier) {
+        const backupPool = floaters.filter((s) => s.role !== seat.pool);
+        const instance = seatInstances.find((s) => s.location === seat.location);
+        fillSeatFromPool(instance, backupPool, ctx, 'floater backup');
+      }
     }
   }
 
@@ -628,7 +766,7 @@ function generateWeeklySchedule({ students, classRows, timeOffRows, manualRows, 
           start: segment.start,
           end: segment.end,
           stillNeeded: segment.need,
-          mandatory: SEATS.find((s) => s.location === instance.location).mandatory,
+          mandatory: seats.find((s) => s.location === instance.location).mandatory,
         });
       }
     }
@@ -652,5 +790,7 @@ module.exports = {
   parseTimeToMinutes,
   formatMinutesToTime,
   computeAvailability,
+  computeUnavailableStudents,
+  filterValidExistingRows,
   generateWeeklySchedule,
 };

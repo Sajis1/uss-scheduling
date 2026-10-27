@@ -13,11 +13,15 @@
    the shared .card class in styles.css so both pages get it) - same shape
    LITS arrived at after a sidebar app-shell and a boxless version were both
    tried and rejected as either too busy or too crowded. The calendar below
-   color-codes by Remote vs. In Person (2026-10-14, replacing an earlier
-   6-row-per-seat layout that read as too busy) - per-seat colors within
-   In Person are still deferred, same reasoning as before. */
+   color-codes three independent ways: Remote vs. In Person (category,
+   2026-10-14), one fixed color per seat (SEAT_COLORS, 2026-10-22), and one
+   fixed color per student (colorForStudent, 2026-10-22) - see manager.js. */
 .manager-main {
-  max-width: 1100px;
+  /* Widened 2026-10-22 (was 1100px) - the calendar's 7 day columns need
+     ~1270px on their own (80px category col + 7x170px day cols), so the
+     narrower width was both wasting space on wide monitors AND forcing the
+     calendar into its own horizontal scrollbar unnecessarily. */
+  max-width: 1600px;
   margin: var(--space-4) auto;
   padding: 0 var(--space-4) var(--space-5);
 }
@@ -188,6 +192,44 @@
   letter-spacing: normal;
 }
 
+/* Per-seat color swatch (seat-group-label) and per-person dot (chip-name,
+   weekly-hours/class-schedule student cells) - two independent color
+   codings, set inline per row from SEAT_COLORS/colorForStudent in
+   manager.js, not here. */
+.seat-swatch {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  margin-right: 0.4rem;
+  vertical-align: middle;
+}
+
+.person-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  margin-right: 0.4rem;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.seat-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 1rem;
+  margin: 0.5rem 0 1rem;
+}
+
+.seat-legend-item {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
 .hours-bar-track {
   position: relative;
   height: 20px;
@@ -228,16 +270,18 @@
 
 .chip {
   display: block;
-  background: #f8f9fb;
-  border-left: 3px solid #94a3b8;
+  background: #f6f8f5;
+  border-left: 3px solid #8a988c;
   border-radius: 4px;
   padding: 0.4rem 0.55rem;
   margin-bottom: 0.4rem;
   font-size: 0.8rem;
 }
 
+/* Border-left-color is NOT set here - it's overridden inline per-seat by
+   renderChip() in manager.js regardless of Manual/Generated. The amber
+   background is the only "this is a manual override" signal now. */
 .chip-manual {
-  border-left-color: #d98c00;
   background: #fff8ea;
 }
 
@@ -293,8 +337,8 @@
 }
 
 .chip-legend-generated {
-  background: #f4f6fa;
-  border-left: 3px solid #94a3b8;
+  background: #f3f6f2;
+  border-left: 3px solid #8a988c;
 }
 
 .chip-legend-manual {
@@ -312,9 +356,11 @@
   min-width: 140px;
 }
 
+/* Teal, not brand indigo - a deliberately distinct secondary accent for
+   class/unavailable-time info, separate from the brand's action color. */
 .chip-class {
-  background: #eef4ff;
-  border-left-color: #5b7fd9;
+  background: #e6f4f7;
+  border-left-color: #0e7490;
 }
 
 #refresh-class-schedule-btn {
@@ -388,15 +434,15 @@
 
 #generate-btn,
 #show-gaps-btn {
-  background: linear-gradient(135deg, #14a5c9 0%, var(--brand) 55%, var(--brand-dark) 100%);
+  background: linear-gradient(135deg, #4ade80 0%, var(--brand) 55%, var(--brand-dark) 100%);
   color: white;
   border: none;
-  box-shadow: 0 3px 12px rgba(14, 116, 144, 0.35);
+  box-shadow: 0 3px 12px rgba(21, 128, 61, 0.35);
 }
 
 #generate-btn:hover,
 #show-gaps-btn:hover {
-  box-shadow: 0 5px 18px rgba(14, 116, 144, 0.45);
+  box-shadow: 0 5px 18px rgba(21, 128, 61, 0.45);
   transform: translateY(-1px);
 }
 
@@ -428,9 +474,9 @@
   font-weight: 700;
   letter-spacing: 0.02em;
   color: white;
-  background: linear-gradient(135deg, #14a5c9 0%, var(--brand-dark) 100%);
+  background: linear-gradient(135deg, #4ade80 0%, var(--brand-dark) 100%);
   border: none;
-  box-shadow: 0 3px 12px rgba(14, 116, 144, 0.35);
+  box-shadow: 0 3px 12px rgba(21, 128, 61, 0.35);
   display: inline-flex;
   align-items: center;
   gap: 0.55rem;
@@ -438,7 +484,7 @@
 }
 
 .btn-copy-excel:hover {
-  box-shadow: 0 5px 18px rgba(14, 116, 144, 0.45);
+  box-shadow: 0 5px 18px rgba(21, 128, 61, 0.45);
   transform: translateY(-1px);
 }
 

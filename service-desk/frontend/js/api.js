@@ -58,13 +58,19 @@ const api = {
 
   getStudentsRoster: () => apiRequest('/api/students/roster'),
 
+  // Reads the live "Seats Configuration" Smartsheet - {seats, warnings}.
+  // Replaces the old hardcoded LOCATIONS/SEAT_DAYS/SEAT_HOURS/CATEGORIES
+  // constants (2026-10-27) so a manager can add/retire a location without
+  // a code change.
+  getSeats: () => apiRequest('/api/seats'),
+
   getWorkSchedule: (semester) =>
     apiRequest(`/api/work-schedule?semester=${encodeURIComponent(semester)}`),
 
-  generateSchedule: (semester, asOfDate, overrideManual) =>
+  generateSchedule: (semester, asOfDate, overrideManual, fullRegenerate) =>
     apiRequest('/api/work-schedule/generate', {
       method: 'POST',
-      body: JSON.stringify({ semester, asOfDate, overrideManual }),
+      body: JSON.stringify({ semester, asOfDate, overrideManual, fullRegenerate }),
     }),
 
   addWorkScheduleRow: (row) =>
