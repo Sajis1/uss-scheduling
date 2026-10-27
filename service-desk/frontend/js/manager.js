@@ -339,18 +339,21 @@ function buildScheduleTableHtml() {
   // they'll look identical here - not handled, flag it if it comes up.
   const firstName = (name) => String(name || '').trim().split(/\s+/)[0] || name;
 
-  // Column widths: Excel's clipboard paste is notoriously inconsistent
-  // about CSS (a <col style="width:..."> hint is often just ignored) but
-  // reliably reads the plain HTML `width` ATTRIBUTE on each <td>, so that's
-  // set on every cell below instead of relying on <colgroup>/CSS alone.
-  // 108px comfortably fits a stacked pair of entries like "10:15-5 A7"
-  // without crowding or overlapping into the next column.
+  // Column widths: tried both a <col> CSS hint and the HTML width
+  // attribute - Excel's clipboard paste honored neither reliably and kept
+  // defaulting to its own narrow standard column width, which clipped the
+  // last character or two off longer entries like "10:15-5 A7" (looked
+  // like overlap, was actually truncation). Giving up on controlling
+  // Excel's column width at all - instead letting day-cell text WRAP
+  // inside its own cell (no nowrap there) so it's never cut off or spills
+  // into a neighbor, no matter what width Excel ends up choosing. Headers/
+  // day labels keep nowrap since they're short enough to always fit.
   const DAY_COL_WIDTH = 64;
   const STUDENT_COL_WIDTH = 108;
 
   const th = (w) => `width="${w}" style="background:#1F3864;color:#fff;font-weight:bold;text-align:center;border:1px solid #999;padding:8px 6px;white-space:nowrap;"`;
   const dayLabelTd = `width="${DAY_COL_WIDTH}" style="background:#D9E1F2;font-weight:bold;text-align:center;border:1px solid #999;padding:8px 6px;white-space:nowrap;"`;
-  const cellTd = `width="${STUDENT_COL_WIDTH}" style="text-align:center;border:1px solid #999;padding:7px 6px;white-space:nowrap;line-height:1.7;"`;
+  const cellTd = `width="${STUDENT_COL_WIDTH}" style="text-align:center;vertical-align:middle;border:1px solid #999;padding:7px 6px;white-space:normal;word-break:keep-all;line-height:1.5;"`;
   const totalTd = `width="${STUDENT_COL_WIDTH}" style="background:#D9E1F2;font-weight:bold;text-align:center;border:1px solid #999;padding:8px 6px;"`;
 
   const totalCols = allStudents.length + 1;
