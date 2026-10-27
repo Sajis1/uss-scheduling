@@ -339,26 +339,27 @@ function buildScheduleTableHtml() {
   // they'll look identical here - not handled, flag it if it comes up.
   const firstName = (name) => String(name || '').trim().split(/\s+/)[0] || name;
 
-  // Explicit per-column widths (via <col>, which Excel honors on paste) -
-  // nowrap alone wasn't enough once columns auto-sized too narrow, text
-  // just overflowed into the next cell instead of wrapping. 108px comfortably
-  // fits a stacked pair of entries like "10:15-5 A7" without crowding.
+  // Column widths: Excel's clipboard paste is notoriously inconsistent
+  // about CSS (a <col style="width:..."> hint is often just ignored) but
+  // reliably reads the plain HTML `width` ATTRIBUTE on each <td>, so that's
+  // set on every cell below instead of relying on <colgroup>/CSS alone.
+  // 108px comfortably fits a stacked pair of entries like "10:15-5 A7"
+  // without crowding or overlapping into the next column.
   const DAY_COL_WIDTH = 64;
   const STUDENT_COL_WIDTH = 108;
-  const colgroup = `<colgroup><col style="width:${DAY_COL_WIDTH}px">${allStudents.map(() => `<col style="width:${STUDENT_COL_WIDTH}px">`).join('')}</colgroup>`;
 
-  const th = 'style="background:#1F3864;color:#fff;font-weight:bold;text-align:center;border:1px solid #999;padding:8px 6px;white-space:nowrap;"';
-  const dayLabelTd = 'style="background:#D9E1F2;font-weight:bold;text-align:center;border:1px solid #999;padding:8px 6px;white-space:nowrap;"';
-  const cellTd = 'style="text-align:center;border:1px solid #999;padding:7px 6px;white-space:nowrap;line-height:1.7;"';
-  const totalTd = 'style="background:#D9E1F2;font-weight:bold;text-align:center;border:1px solid #999;padding:8px 6px;"';
+  const th = (w) => `width="${w}" style="background:#1F3864;color:#fff;font-weight:bold;text-align:center;border:1px solid #999;padding:8px 6px;white-space:nowrap;"`;
+  const dayLabelTd = `width="${DAY_COL_WIDTH}" style="background:#D9E1F2;font-weight:bold;text-align:center;border:1px solid #999;padding:8px 6px;white-space:nowrap;"`;
+  const cellTd = `width="${STUDENT_COL_WIDTH}" style="text-align:center;border:1px solid #999;padding:7px 6px;white-space:nowrap;line-height:1.7;"`;
+  const totalTd = `width="${STUDENT_COL_WIDTH}" style="background:#D9E1F2;font-weight:bold;text-align:center;border:1px solid #999;padding:8px 6px;"`;
 
   const totalCols = allStudents.length + 1;
   const titleRow = `<tr><td colspan="${totalCols}" style="background:#1F3864;color:#fff;font-weight:bold;text-align:center;font-size:14pt;padding:10px 8px;">USS Service Desk Student Worker Schedule &mdash; ${htmlEscape(semester)}</td></tr>`;
-  const headerRow = `<tr><td ${th}></td>${allStudents.map((name) => `<td ${th}>${htmlEscape(firstName(name))}</td>`).join('')}</tr>`;
+  const headerRow = `<tr><td ${th(DAY_COL_WIDTH)}></td>${allStudents.map((name) => `<td ${th(STUDENT_COL_WIDTH)}>${htmlEscape(firstName(name))}</td>`).join('')}</tr>`;
   const dayRows = DAYS.map(
     (day) => `<tr><td ${dayLabelTd}>${DAY_LABEL[day]}</td>${allStudents.map((name) => `<td ${cellTd}>${cellFor(name, day)}</td>`).join('')}</tr>`
   ).join('');
-  const hoursRow = `<tr><td ${totalTd}>Total Hrs</td>${allStudents
+  const hoursRow = `<tr><td ${dayLabelTd}>Total Hrs</td>${allStudents
     .map((name) => `<td ${totalTd}>${(Math.round((totals.get(name) || 0) / 6) / 10).toFixed(1).replace(/\.0$/, '')}</td>`)
     .join('')}</tr>`;
 
@@ -367,7 +368,6 @@ function buildScheduleTableHtml() {
   const updatedRow = `<tr><td colspan="${totalCols}" style="border:1px solid #999;padding:8px 6px;text-align:right;font-style:italic;">Last Updated: ${new Date().toLocaleDateString()}</td></tr>`;
 
   return `<table style="border-collapse:collapse;table-layout:fixed;font-family:${EXPORT_FONT_STACK};font-size:11pt;">
-${colgroup}
 ${titleRow}
 ${headerRow}
 ${dayRows}
