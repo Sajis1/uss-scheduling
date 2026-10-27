@@ -331,14 +331,22 @@ function buildScheduleTableHtml() {
       })
       .join('<br>');
 
-  const th = 'style="background:#1F3864;color:#fff;font-weight:bold;text-align:center;border:1px solid #999;padding:5px 10px;"';
+  // Excel export shows first name only - full names (several 3-4 words
+  // long, e.g. "Abu Alteen Abdulaziz") were wrapping to 3 lines each and
+  // making every column unreadably narrow. Lookups below still key off the
+  // full Student Name (that's what's actually on each row); only the
+  // printed header changes. If two students ever share a first name,
+  // they'll look identical here - not handled, flag it if it comes up.
+  const firstName = (name) => String(name || '').trim().split(/\s+/)[0] || name;
+
+  const th = 'style="background:#1F3864;color:#fff;font-weight:bold;text-align:center;border:1px solid #999;padding:5px 10px;white-space:nowrap;"';
   const dayLabelTd = 'style="background:#D9E1F2;font-weight:bold;text-align:center;border:1px solid #999;padding:5px 10px;white-space:nowrap;"';
-  const cellTd = 'style="text-align:center;border:1px solid #999;padding:5px 10px;"';
+  const cellTd = 'style="text-align:center;border:1px solid #999;padding:5px 10px;white-space:nowrap;"';
   const totalTd = 'style="background:#D9E1F2;font-weight:bold;text-align:center;border:1px solid #999;padding:5px 10px;"';
 
   const totalCols = allStudents.length + 1;
   const titleRow = `<tr><td colspan="${totalCols}" style="background:#1F3864;color:#fff;font-weight:bold;text-align:center;font-size:14pt;padding:8px;">USS Service Desk Student Worker Schedule &mdash; ${htmlEscape(semester)}</td></tr>`;
-  const headerRow = `<tr><td ${th}></td>${allStudents.map((name) => `<td ${th}>${htmlEscape(name)}</td>`).join('')}</tr>`;
+  const headerRow = `<tr><td ${th}></td>${allStudents.map((name) => `<td ${th}>${htmlEscape(firstName(name))}</td>`).join('')}</tr>`;
   const dayRows = DAYS.map(
     (day) => `<tr><td ${dayLabelTd}>${DAY_LABEL[day]}</td>${allStudents.map((name) => `<td ${cellTd}>${cellFor(name, day)}</td>`).join('')}</tr>`
   ).join('');
