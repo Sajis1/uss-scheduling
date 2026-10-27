@@ -351,16 +351,24 @@ function buildScheduleTableHtml() {
   const DAY_COL_WIDTH = 64;
   const STUDENT_COL_WIDTH = 108;
 
-  const th = (w) => `width="${w}" style="background:#1F3864;color:#fff;font-weight:bold;text-align:center;border:1px solid #999;padding:8px 6px;white-space:nowrap;"`;
-  const dayLabelTd = `width="${DAY_COL_WIDTH}" style="background:#D9E1F2;font-weight:bold;text-align:center;border:1px solid #999;padding:8px 6px;white-space:nowrap;"`;
-  const cellTd = `width="${STUDENT_COL_WIDTH}" style="text-align:center;vertical-align:middle;border:1px solid #999;padding:7px 6px;white-space:normal;word-break:keep-all;line-height:1.5;"`;
-  const totalTd = `width="${STUDENT_COL_WIDTH}" style="background:#D9E1F2;font-weight:bold;text-align:center;border:1px solid #999;padding:8px 6px;"`;
+  // Forest-green palette (matches the app's actual brand, 2026-10-27) -
+  // this export was still using leftover navy from LITS's original
+  // version it was copied from.
+  const BRAND_DARK = '#14532D';
+  const BRAND_PALE = '#DCF3E2';
+  const ROW_ALT = '#F3FAF4'; // zebra striping for the day rows
+
+  const th = (w) => `width="${w}" style="background:${BRAND_DARK};color:#fff;font-weight:bold;text-align:center;border:1px solid #999;padding:8px 6px;white-space:nowrap;"`;
+  const dayLabelTd = `width="${DAY_COL_WIDTH}" style="background:${BRAND_PALE};font-weight:bold;text-align:center;border:1px solid #999;padding:8px 6px;white-space:nowrap;"`;
+  const cellTd = (alt) =>
+    `width="${STUDENT_COL_WIDTH}" style="background:${alt ? ROW_ALT : '#ffffff'};text-align:center;vertical-align:middle;border:1px solid #999;padding:7px 6px;white-space:normal;word-break:keep-all;line-height:1.5;"`;
+  const totalTd = `width="${STUDENT_COL_WIDTH}" style="background:${BRAND_PALE};font-weight:bold;text-align:center;border:1px solid #999;padding:8px 6px;"`;
 
   const totalCols = allStudents.length + 1;
-  const titleRow = `<tr><td colspan="${totalCols}" style="background:#1F3864;color:#fff;font-weight:bold;text-align:center;font-size:14pt;padding:10px 8px;">USS Service Desk Student Worker Schedule &mdash; ${htmlEscape(semester)}</td></tr>`;
+  const titleRow = `<tr><td colspan="${totalCols}" style="background:${BRAND_DARK};color:#fff;font-weight:bold;text-align:center;font-size:14pt;padding:10px 8px;">USS Service Desk Student Worker Schedule &mdash; ${htmlEscape(semester)}</td></tr>`;
   const headerRow = `<tr><td ${th(DAY_COL_WIDTH)}></td>${allStudents.map((name) => `<td ${th(STUDENT_COL_WIDTH)}>${htmlEscape(firstName(name))}</td>`).join('')}</tr>`;
   const dayRows = DAYS.map(
-    (day) => `<tr><td ${dayLabelTd}>${DAY_LABEL[day]}</td>${allStudents.map((name) => `<td ${cellTd}>${cellFor(name, day)}</td>`).join('')}</tr>`
+    (day, i) => `<tr><td ${dayLabelTd}>${DAY_LABEL[day]}</td>${allStudents.map((name) => `<td ${cellTd(i % 2 === 1)}>${cellFor(name, day)}</td>`).join('')}</tr>`
   ).join('');
   const hoursRow = `<tr><td ${dayLabelTd}>Total Hrs</td>${allStudents
     .map((name) => `<td ${totalTd}>${(Math.round((totals.get(name) || 0) / 6) / 10).toFixed(1).replace(/\.0$/, '')}</td>`)
