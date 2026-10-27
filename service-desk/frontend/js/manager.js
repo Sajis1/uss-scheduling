@@ -339,13 +339,21 @@ function buildScheduleTableHtml() {
   // they'll look identical here - not handled, flag it if it comes up.
   const firstName = (name) => String(name || '').trim().split(/\s+/)[0] || name;
 
-  const th = 'style="background:#1F3864;color:#fff;font-weight:bold;text-align:center;border:1px solid #999;padding:5px 10px;white-space:nowrap;"';
-  const dayLabelTd = 'style="background:#D9E1F2;font-weight:bold;text-align:center;border:1px solid #999;padding:5px 10px;white-space:nowrap;"';
-  const cellTd = 'style="text-align:center;border:1px solid #999;padding:5px 10px;white-space:nowrap;"';
-  const totalTd = 'style="background:#D9E1F2;font-weight:bold;text-align:center;border:1px solid #999;padding:5px 10px;"';
+  // Explicit per-column widths (via <col>, which Excel honors on paste) -
+  // nowrap alone wasn't enough once columns auto-sized too narrow, text
+  // just overflowed into the next cell instead of wrapping. 108px comfortably
+  // fits a stacked pair of entries like "10:15-5 A7" without crowding.
+  const DAY_COL_WIDTH = 64;
+  const STUDENT_COL_WIDTH = 108;
+  const colgroup = `<colgroup><col style="width:${DAY_COL_WIDTH}px">${allStudents.map(() => `<col style="width:${STUDENT_COL_WIDTH}px">`).join('')}</colgroup>`;
+
+  const th = 'style="background:#1F3864;color:#fff;font-weight:bold;text-align:center;border:1px solid #999;padding:8px 6px;white-space:nowrap;"';
+  const dayLabelTd = 'style="background:#D9E1F2;font-weight:bold;text-align:center;border:1px solid #999;padding:8px 6px;white-space:nowrap;"';
+  const cellTd = 'style="text-align:center;border:1px solid #999;padding:7px 6px;white-space:nowrap;line-height:1.7;"';
+  const totalTd = 'style="background:#D9E1F2;font-weight:bold;text-align:center;border:1px solid #999;padding:8px 6px;"';
 
   const totalCols = allStudents.length + 1;
-  const titleRow = `<tr><td colspan="${totalCols}" style="background:#1F3864;color:#fff;font-weight:bold;text-align:center;font-size:14pt;padding:8px;">USS Service Desk Student Worker Schedule &mdash; ${htmlEscape(semester)}</td></tr>`;
+  const titleRow = `<tr><td colspan="${totalCols}" style="background:#1F3864;color:#fff;font-weight:bold;text-align:center;font-size:14pt;padding:10px 8px;">USS Service Desk Student Worker Schedule &mdash; ${htmlEscape(semester)}</td></tr>`;
   const headerRow = `<tr><td ${th}></td>${allStudents.map((name) => `<td ${th}>${htmlEscape(firstName(name))}</td>`).join('')}</tr>`;
   const dayRows = DAYS.map(
     (day) => `<tr><td ${dayLabelTd}>${DAY_LABEL[day]}</td>${allStudents.map((name) => `<td ${cellTd}>${cellFor(name, day)}</td>`).join('')}</tr>`
@@ -355,15 +363,16 @@ function buildScheduleTableHtml() {
     .join('')}</tr>`;
 
   const legendText = currentSeats.map((s) => `${markerForSeat(s.location)} = ${s.location}`).join('&nbsp;&nbsp;&nbsp;');
-  const legendRow = `<tr><td colspan="${totalCols}" style="border:1px solid #999;padding:5px 10px;">${legendText}</td></tr>`;
-  const updatedRow = `<tr><td colspan="${totalCols}" style="border:1px solid #999;padding:5px 10px;text-align:right;font-style:italic;">Last Updated: ${new Date().toLocaleDateString()}</td></tr>`;
+  const legendRow = `<tr><td colspan="${totalCols}" style="border:1px solid #999;padding:8px 6px;">${legendText}</td></tr>`;
+  const updatedRow = `<tr><td colspan="${totalCols}" style="border:1px solid #999;padding:8px 6px;text-align:right;font-style:italic;">Last Updated: ${new Date().toLocaleDateString()}</td></tr>`;
 
-  return `<table style="border-collapse:collapse;font-family:${EXPORT_FONT_STACK};font-size:11pt;">
+  return `<table style="border-collapse:collapse;table-layout:fixed;font-family:${EXPORT_FONT_STACK};font-size:11pt;">
+${colgroup}
 ${titleRow}
 ${headerRow}
 ${dayRows}
 ${hoursRow}
-<tr><td colspan="${totalCols}" style="border:none;padding:4px;"></td></tr>
+<tr><td colspan="${totalCols}" style="border:none;padding:6px;"></td></tr>
 ${legendRow}
 ${updatedRow}
 </table>`;
