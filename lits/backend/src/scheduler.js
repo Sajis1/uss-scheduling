@@ -524,6 +524,56 @@ function mergeAdjacentRows(rows) {
   return merged;
 }
 
+// Validates each existing Generated row against the CURRENT roster/classes/
+// time-off, so a Generate run can freeze whatever's still correct instead of
+// deleting and rebuilding every Generated row from scratch every time - the
+// same fix already shipped for USS Service Desk (same bug: adding one new
+// student reshuffled everyone else's already-settled schedule, since the old
+// code always wiped and regenerated the whole semester). A row is invalid if
+// its student is no longer active, their Role no longer permits that desk
+// (e.g. a Role change), or their current availability (fresh classes/time
+// off) no longer covers the row's exact start-end window. Unlike Service
+// Desk, a student can have more than one row the same day here (split shifts
+// are allowed) - each row is still checked independently against the
+// student's class-based availability for that day, which is correct because
+// we're only asking "does this one already-committed block still fit",
+// not re-deriving the student's whole day from scratch.
+function filterValidExistingRows(existingGeneratedRows, { students, classRows, timeOffRows, asOfDate }) {
+  const activeNames = new Set(students.map((s) => s.name));
+  const roleByName = new Map(students.map((s) => [s.name, s.role]));
+  const unavailableStudents = computeUnavailableStudents(timeOffRows, asOfDate);
+  const valid = [];
+  const invalid = [];
+  for (const row of existingGeneratedRows) {
+    const name = row['Student Name'];
+    const day = row['Day'];
+    const location = row['Location'];
+    const start = parseTimeToMinutes(row['Start Time']);
+    const end = parseTimeToMinutes(row['End Time']);
+    if (!activeNames.has(name) || start == null || end == null) {
+      invalid.push(row);
+      continue;
+    }
+    const role = roleByName.get(name);
+    const roleStillPermitsLocation =
+      (location === LOCATIONS.NW && role === 'NW') ||
+      ((location === LOCATIONS.OMB || location === LOCATIONS.CSB) && role === 'OMB/CSB');
+    if (!roleStillPermitsLocation) {
+      invalid.push(row);
+      continue;
+    }
+    const availability = computeAvailability({
+      day,
+      classRows: classRows.filter((r) => r['Student Name'] === name),
+      manualOccupied: [],
+      unavailableAllDay: unavailableStudents.has(name),
+    });
+    const stillFits = availability.some((iv) => iv.start <= start && iv.end >= end);
+    (stillFits ? valid : invalid).push(row);
+  }
+  return { valid, invalid };
+}
+
 module.exports = {
   OFFICE_START,
   OFFICE_END,
@@ -533,5 +583,7 @@ module.exports = {
   parseTimeToMinutes,
   formatMinutesToTime,
   computeAvailability,
+  computeUnavailableStudents,
   generateWeeklySchedule,
+  filterValidExistingRows,
 };

@@ -156,6 +156,31 @@ Generate run, and the generator treats their time as already occupied so it
 won't double-book over them. Editing any row via the dashboard unconditionally
 sets `Source: 'Manual'`, regardless of what it was before.
 
+**Generate is incremental by default, added 2026-11-02 â€” ported from the
+same fix already shipped on USS Service Desk.** Previously, every Generate
+run deleted and rebuilt ALL `Generated` rows for the semester from scratch,
+even when nothing about most students had changed â€” so adding one new hire
+mid-semester could reshuffle everyone else's already-settled schedule. Fixed
+the same way as Service Desk: existing `Generated` rows are now validated
+against the CURRENT roster/classes/time-off on every run
+(`filterValidExistingRows` in `scheduler.js`). A row is invalid only if its
+student is no longer Active, their `Role` no longer permits that desk (e.g.
+an NW/OMB-CSB Role change), or their current class/time-off availability no
+longer covers the row's exact start-end window. Still-valid rows are frozen
+â€” passed into the scheduler as pre-occupied time the same way `Source:
+'Manual'` rows already are â€” and are neither deleted nor re-added, since
+they're already correct in Smartsheet. Only genuinely invalid rows get
+dropped and re-filled, and only genuinely new need (a new student, a freed-up
+gap) produces new rows. Verified live via simulation: re-running Generate
+twice with nothing changed is a true no-op (0 added, 0 removed, all existing
+rows kept); adding a simulated new hire only ever produced new rows for that
+student, zero changes to the existing roster; a simulated Role change
+correctly invalidated only that one student's own rows. **Escape hatch:**
+`fullRegenerate: true` (a separate dashboard checkbox from "override manual
+edits") skips the freeze step entirely and rebuilds every `Generated` row
+from scratch, for when a manager wants a clean rebuild instead of an
+incremental update.
+
 ## Open questions
 
 Flagged in code comments too (`scheduler.js`, top of file) â€” confirm these

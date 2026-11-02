@@ -1,6 +1,6 @@
 const express = require('express');
 const { getRows, addRow, addRows, updateRow, deleteRows } = require('../smartsheetClient');
-const { generateWeeklySchedule, formatMinutesToTime } = require('../scheduler');
+const { generateWeeklySchedule, formatMinutesToTime, filterValidExistingRows } = require('../scheduler');
 
 const router = express.Router();
 
@@ -23,15 +23,28 @@ router.get('/', async (req, res) => {
   }
 });
 
-// POST /api/work-schedule/generate -> run the scheduler and replace this
-// semester's Generated rows. Existing Manual rows are never touched, UNLESS
-// `overrideManual: true` is passed - then every row for the semester
-// (Manual and Generated alike) is deleted and rebuilt from scratch, and
-// nothing is treated as pre-occupied. Opt-in and off by default since this
-// is the one way Generate can destroy a manager's deliberate manual edits.
+// POST /api/work-schedule/generate -> run the scheduler for this semester.
+// Existing Manual rows are never touched, UNLESS `overrideManual: true` is
+// passed - then every row for the semester (Manual and Generated alike) is
+// deleted and rebuilt from scratch, and nothing is treated as pre-occupied.
+// Opt-in and off by default since this is the one way Generate can destroy a
+// manager's deliberate manual edits.
+//
+// Generated rows are now INCREMENTAL by default (ported from the same fix on
+// USS Service Desk): existing Generated rows are validated against the
+// current roster/classes/time-off (filterValidExistingRows) and whatever's
+// still valid is frozen in place - never deleted, never re-added, since it's
+// already correct in Smartsheet. Only genuinely invalid rows (student left,
+// a Role change, a new class/time-off conflict) are dropped and re-filled,
+// and only genuinely new need (a new hire, a freed-up gap) produces new
+// rows. This is what stops adding one new student from reshuffling everyone
+// else's already-settled schedule. `fullRegenerate: true` is the escape
+// hatch - skips the freeze step entirely and rebuilds every Generated row
+// from scratch, independent of `overrideManual` (which is about Manual rows,
+// not this).
 router.post('/generate', async (req, res) => {
   try {
-    const { semester, overrideManual } = req.body;
+    const { semester, overrideManual, fullRegenerate } = req.body;
     const asOfDate = req.body.asOfDate || todayIso();
     if (!semester) {
       return res.status(400).json({ error: 'semester is required.' });
@@ -55,15 +68,30 @@ router.post('/generate', async (req, res) => {
 
     const existingForSemester = workScheduleRows.filter((row) => row['Semester'] === semester);
     const manualRows = overrideManual ? [] : existingForSemester.filter((row) => row['Source'] === 'Manual');
-    const staleRows = overrideManual
-      ? existingForSemester
+    const existingGeneratedRows = overrideManual
+      ? []
       : existingForSemester.filter((row) => row['Source'] === 'Generated');
+
+    let frozenGeneratedRows = [];
+    let staleGeneratedRows = existingGeneratedRows;
+    if (!overrideManual && !fullRegenerate) {
+      const { valid, invalid } = filterValidExistingRows(existingGeneratedRows, {
+        students,
+        classRows,
+        timeOffRows,
+        asOfDate,
+      });
+      frozenGeneratedRows = valid;
+      staleGeneratedRows = invalid;
+    }
+
+    const staleRows = overrideManual ? existingForSemester : staleGeneratedRows;
 
     const { generatedRows, gaps, warnings } = generateWeeklySchedule({
       students,
       classRows,
       timeOffRows,
-      manualRows,
+      manualRows: [...manualRows, ...frozenGeneratedRows],
       asOfDate,
     });
 
@@ -89,6 +117,7 @@ router.post('/generate', async (req, res) => {
     res.json({
       added: newFieldRows.length,
       removed: staleRows.length,
+      kept: frozenGeneratedRows.length,
       overrodeManual: Boolean(overrideManual),
       gaps: gaps.map((gap) => ({
         day: gap.day,

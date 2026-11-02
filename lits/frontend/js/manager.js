@@ -575,9 +575,16 @@ async function handleGenerate() {
   }
 
   const overrideManual = document.getElementById('override-manual-checkbox').checked;
+  const fullRegenerate = document.getElementById('full-regenerate-checkbox').checked;
   if (overrideManual) {
     const proceed = await appConfirm(
       `⚠ This will delete every manual shift for ${semester} and rebuild the whole schedule from scratch - manual edits will NOT survive this run. Continue?`,
+      'warning'
+    );
+    if (!proceed) return;
+  } else if (fullRegenerate) {
+    const proceed = await appConfirm(
+      `⚠ This will ignore every existing generated shift for ${semester} and rebuild the whole schedule from scratch. Continue?`,
       'warning'
     );
     if (!proceed) return;
@@ -590,11 +597,11 @@ async function handleGenerate() {
   showGapsBtn.textContent = 'View Uncovered Gaps';
 
   try {
-    const result = await api.generateSchedule(semester, asOfDate || undefined, overrideManual);
+    const result = await api.generateSchedule(semester, asOfDate || undefined, overrideManual, fullRegenerate);
     lastGapsCount = result.gaps.length;
     showStatus(
       statusEl,
-      `Added ${result.added} generated rows, removed ${result.removed} previous ${result.overrodeManual ? '' : 'generated '}rows.` +
+      `Kept ${result.kept} existing shifts, added ${result.added}, removed ${result.removed}.` +
         (result.warnings.length ? ` Warnings: ${result.warnings.join(' ')}` : ''),
       'success'
     );

@@ -56,7 +56,15 @@
         </div>
         <p class="hint">
           Students on approved time off for this date are skipped. Re-run once it ends.
+          Generate only fills in what's new or changed - an existing student's shift stays
+          as-is unless something actually invalidates it, so adding a new hire never
+          reshuffles everyone else's schedule.
         </p>
+
+        <label class="checkbox-label">
+          <input id="full-regenerate-checkbox" type="checkbox" />
+          Regenerate the entire schedule from scratch (ignores existing generated shifts)
+        </label>
 
         <label class="checkbox-label">
           <input id="override-manual-checkbox" type="checkbox" />
