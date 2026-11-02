@@ -171,7 +171,7 @@ function fillSemesterSelect(selectEl, selectedValue) {
 
 function resetClassScheduleForm() {
   document.getElementById('cs-rowid').value = '';
-  document.getElementById('class-schedule-form-title').textContent = 'My Class Schedule';
+  document.getElementById('class-schedule-form-title').textContent = 'My Unavailable Schedule';
   document.getElementById('cs-submit-btn').textContent = 'Submit';
   document.getElementById('cs-cancel-btn').hidden = true;
   classScheduleForm.reset();
