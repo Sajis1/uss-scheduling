@@ -331,6 +331,10 @@ if (TUTORIAL_VIDEO_URL) {
     showVideoModal(TUTORIAL_VIDEO_URL, 'How to submit your Unavailable Schedule'));
 }
 
+document
+  .getElementById('tutorial-banner-btn')
+  .addEventListener('click', () => showVideoModal(TUTORIAL_VIDEO_URL, 'How to submit your Unavailable Schedule'));
+
 // --- Init ---
 // loadStudents() is awaited before auto-restoring a returning student so the
 // name dropdown is populated for the "switch student" path even though
