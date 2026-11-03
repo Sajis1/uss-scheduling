@@ -2,6 +2,13 @@
 // sessionStorage after being picked from the Student Master dropdown.
 const STORAGE_KEY = 'uss-service-desk-student-worker-name';
 
+// Embed URL for the student tutorial video, shown via the tutorial banner's
+// Watch Tutorial button (showVideoModal, in modal.js). A real popup/new tab
+// is unreliable once this is embedded in a Teams tab, so the video opens in
+// an in-page modal instead - works identically in a normal browser tab.
+const TUTORIAL_VIDEO_URL =
+  'https://uhdowntown.hosted.panopto.com/Panopto/Pages/Embed.aspx?id=be4673ea-b222-4887-91df-b4f700fe9249';
+
 const pickerSection = document.getElementById('picker-section');
 const portalSection = document.getElementById('portal-section');
 const studentSelect = document.getElementById('student-select');
@@ -68,6 +75,10 @@ continueBtn.addEventListener('click', () => {
 });
 
 switchStudentBtn.addEventListener('click', clearActiveStudent);
+
+document
+  .getElementById('tutorial-banner-btn')
+  .addEventListener('click', () => showVideoModal(TUTORIAL_VIDEO_URL, 'Student Portal tutorial'));
 
 // --- Tabs ---
 document.querySelectorAll('.tab-btn').forEach((btn) => {

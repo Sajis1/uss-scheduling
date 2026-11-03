@@ -1,5 +1,12 @@
 // No login here either (same accepted tradeoff as the student portal).
 
+// Embed URL for the manager tutorial video, shown via the tutorial banner's
+// Watch Tutorial button (showVideoModal, in modal.js) instead of a new-tab
+// link - a real popup/new tab is unreliable once this is embedded in a
+// Teams tab.
+const TUTORIAL_VIDEO_URL =
+  'https://uhdowntown.hosted.panopto.com/Panopto/Pages/Embed.aspx?id=7d371eac-5b14-4a90-bcab-b4f7010319e0';
+
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const DAY_LABEL = { Monday: 'Mon', Tuesday: 'Tue', Wednesday: 'Wed', Thursday: 'Thu', Friday: 'Fri', Saturday: 'Sat', Sunday: 'Sun' };
 
@@ -731,6 +738,9 @@ async function setTimeOffStatus(rowId, status) {
 }
 
 // --- Init ---
+document
+  .getElementById('tutorial-banner-btn')
+  .addEventListener('click', () => showVideoModal(TUTORIAL_VIDEO_URL, 'Manager Dashboard tutorial'));
 document.getElementById('generate-btn').addEventListener('click', handleGenerate);
 document.getElementById('show-gaps-btn').addEventListener('click', (e) => {
   const gapsPanel = document.getElementById('gaps-panel');

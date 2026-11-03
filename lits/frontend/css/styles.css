@@ -147,6 +147,8 @@ main {
   background: #fff;
   color: var(--brand-dark);
   text-decoration: none;
+  border: none;
+  cursor: pointer;
   font-weight: 700;
   padding: 0.6rem 1.25rem;
   border-radius: 999px;
