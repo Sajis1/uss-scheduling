@@ -9,7 +9,9 @@ const STORAGE_KEY = 'uss-lits-student-worker-name';
 //   YouTube (unlisted):            https://www.youtube.com/embed/VIDEO_ID
 //   Microsoft Stream / SharePoint: the src="" URL from its "Embed" <iframe> snippet
 //   Vimeo:                         https://player.vimeo.com/video/VIDEO_ID
-const TUTORIAL_VIDEO_URL = '';
+//   Panopto:                       swap Viewer.aspx for Embed.aspx, same ?id=
+const TUTORIAL_VIDEO_URL =
+  'https://uhdowntown.hosted.panopto.com/Panopto/Pages/Embed.aspx?id=be4673ea-b222-4887-91df-b4f700fe9249';
 
 const pickerSection = document.getElementById('picker-section');
 const portalSection = document.getElementById('portal-section');

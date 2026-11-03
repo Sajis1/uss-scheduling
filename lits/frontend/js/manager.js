@@ -17,7 +17,9 @@ const SEAT_CAPACITY = { OMB: 1, NW: 1, CSB: 1 };
 //   YouTube (unlisted):            https://www.youtube.com/embed/VIDEO_ID
 //   Microsoft Stream / SharePoint: the src="" URL from its "Embed" <iframe> snippet
 //   Vimeo:                         https://player.vimeo.com/video/VIDEO_ID
-const TUTORIAL_VIDEO_URL = '';
+//   Panopto:                       swap Viewer.aspx for Embed.aspx, same ?id=
+const TUTORIAL_VIDEO_URL =
+  'https://uhdowntown.hosted.panopto.com/Panopto/Pages/Embed.aspx?id=7d371eac-5b14-4a90-bcab-b4f7010319e0';
 
 let currentWorkScheduleRows = [];
 let currentRoster = []; // [{name, role, active, maxHours, extension, phone}] - populated by loadRoster(), reused by the Excel export
