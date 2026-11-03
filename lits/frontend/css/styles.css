@@ -104,6 +104,62 @@ main {
   padding: 0 1.25rem;
 }
 
+/* Solid brand-gradient banner, deliberately NOT a glass .card - this is a
+   call-to-action and needs to visually outrank the translucent cards below
+   it, not blend in with them. */
+.tutorial-banner {
+  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-dark) 100%);
+  color: #fff;
+  border-radius: 14px;
+  padding: 1.1rem 1.4rem;
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.18);
+}
+
+.tutorial-banner-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.22);
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.tutorial-banner-text {
+  flex: 1 1 220px;
+  font-size: 1rem;
+}
+
+.tutorial-banner-text strong {
+  display: block;
+  font-size: 1.05rem;
+  margin-bottom: 0.15rem;
+}
+
+.tutorial-banner-btn {
+  background: #fff;
+  color: var(--brand-dark);
+  text-decoration: none;
+  font-weight: 700;
+  padding: 0.6rem 1.25rem;
+  border-radius: 999px;
+  font-size: 0.92rem;
+  white-space: nowrap;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.tutorial-banner-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+
 /* Glass card: semi-transparent + blurred, so the teal gradient wash on
    body shows through softly instead of the box sitting on flat white. */
 .card {
