@@ -829,10 +829,6 @@ if (TUTORIAL_VIDEO_URL) {
     showVideoModal(TUTORIAL_VIDEO_URL, 'Manager Dashboard tutorial'));
 }
 
-document
-  .getElementById('tutorial-banner-btn')
-  .addEventListener('click', () => showVideoModal(TUTORIAL_VIDEO_URL, 'Manager Dashboard tutorial'));
-
 document.getElementById('asof-input').valueAsDate = new Date();
 fillSemesterSelect(document.getElementById('shift-semester'), document.getElementById('calendar-semester-input').value);
 
